@@ -39,6 +39,7 @@ jobs:
           $exe = Get-ChildItem ffmpeg_tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1
           if (-not $exe) { throw 'ffmpeg.exe não encontrado no pacote baixado.' }
           Write-Host ('SHA256 do ffmpeg.exe: ' + (Get-FileHash $exe.FullName -Algorithm SHA256).Hash)
+          New-Item -ItemType Directory -Force -Path 'src/TelaRec.App/Resources' | Out-Null
           $dest = 'src/TelaRec.App/Resources/ffmpeg.exe.gz'
           $in  = [IO.File]::OpenRead($exe.FullName)
           $out = [IO.File]::Create($dest)
