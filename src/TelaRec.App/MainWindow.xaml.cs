@@ -1,0 +1,469 @@
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Microsoft.Win32;
+using TelaRec.Core;
+using TelaRec.Native;
+using TelaRec.Services;
+
+namespace TelaRec;
+
+public partial class MainWindow : Window
+{
+    private readonly string _settingsPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TelaRec", "settings.json");
+
+    private AppSettings _cfg;
+    private List<MonitorInfo> _monitors = new();
+    private MonitorInfo? _selected;
+    private readonly Dictionary<string, BitmapSource?> _thumbs = new();
+    private Recorder? _rec;
+    private VideoEncoder _hw = VideoEncoder.Cpu;
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private int _ticks;
+    private bool _busy, _closing, _closeAfter, _warnedDisk;
+    private string? _lastFile, _folderToOpen;
+    private bool _affinityApplied;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        _cfg = AppSettings.Load(_settingsPath);
+
+        FolderBox.Text = _cfg.OutputFolder;
+        NameBox.Text = _cfg.FileName;
+        (_cfg.Fps == 60 ? Fps60 : Fps30).IsChecked = true;
+        switch (_cfg.Quality)
+        {
+            case VideoQuality.Economy: QEco.IsChecked = true; break;
+            case VideoQuality.High: QHigh.IsChecked = true; break;
+            default: QBal.IsChecked = true; break;
+        }
+        HwCheck.IsChecked = _cfg.UseHardware;
+        HideCheck.IsChecked = _cfg.HideWindowFromCapture;
+
+        _timer.Tick += Timer_Tick;
+        Loaded += async (_, _) => await InitAsync();
+        Closing += Window_Closing;
+        Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+    }
+
+    // ------------------------------------------------------------------ inicialização
+    private async Task InitAsync()
+    {
+        ShowInfo("Preparando o motor de vídeo (apenas na primeira execução)…");
+        var (path, error) = await Task.Run(FfmpegProvider.Ensure);
+        if (path == null) { ShowError(error ?? "Falha ao preparar o motor de vídeo."); return; }
+
+        _rec = new Recorder(path);
+        _rec.StateChanged += s => Dispatcher.InvokeAsync(() => ApplyState(s));
+        _rec.Warning += m => Dispatcher.InvokeAsync(() => ShowInfo(m));
+        _rec.Interrupted += r => Dispatcher.InvokeAsync(() => ShowResult(r));
+
+        RefreshMonitors();
+        ShowInfo("Verificando aceleração de hardware…");
+        _hw = await EncoderProbe.DetectBestAsync(path);
+        EncoderInfo.Text = _hw == VideoEncoder.Cpu
+            ? "Codificador: CPU (x264). Nenhum codificador de hardware compatível foi encontrado."
+            : $"Codificador de hardware disponível: {EncoderProbe.Describe(_hw)}.";
+        HideMessage();
+        RecButton.IsEnabled = _monitors.Count > 0;
+    }
+
+    // ------------------------------------------------------------------ monitores
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
+        Dispatcher.InvokeAsync(async () => { await Task.Delay(700); RefreshMonitors(); });
+
+    private void RefreshButton_Click(object sender, RoutedEventArgs e) => RefreshMonitors();
+
+    private void RefreshMonitors()
+    {
+        List<MonitorInfo> list;
+        try { list = DxgiMap.Annotate(MonitorEnumerator.GetAll()); }
+        catch (Exception ex) { ShowError("Não foi possível detectar os monitores: " + ex.Message); return; }
+
+        _monitors = list;
+        var rec = _rec;
+
+        if (rec != null && rec.State is RecState.Recording or RecState.Paused)
+        {
+            // Durante a gravação o monitor escolhido é validado, nunca trocado silenciosamente.
+            var still = list.FirstOrDefault(m => m.DeviceName == _selected?.DeviceName);
+            if (still == null || !still.SameGeometryAs(_selected))
+                _ = StopBecauseMonitorChangedAsync();
+            DrawMonitors();
+            return;
+        }
+
+        foreach (var m in list) _thumbs[m.DeviceName] = ScreenThumbnail.Capture(m);
+
+        var previous = _selected;
+        _selected = list.FirstOrDefault(m => previous != null && m.DeviceName == previous.DeviceName)
+                    ?? list.FirstOrDefault(m => m.IsPrimary) ?? list.FirstOrDefault();
+        if (previous != null && _selected != null && previous.DeviceName != _selected.DeviceName)
+            ShowInfo("A configuração de monitores mudou. Confira qual tela está selecionada.");
+
+        if (list.Count == 0) ShowError("Nenhum monitor foi detectado.");
+        RecButton.IsEnabled = _rec != null && list.Count > 0 && !_busy;
+        DrawMonitors();
+        UpdateSelectedInfo();
+    }
+
+    private async Task StopBecauseMonitorChangedAsync()
+    {
+        if (_rec == null) return;
+        var r = await _rec.FinishAsync(
+            "O monitor selecionado foi desconectado ou teve a configuração alterada; a gravação foi finalizada com segurança.");
+        ShowResult(r);
+    }
+
+    private void LayoutHost_SizeChanged(object sender, SizeChangedEventArgs e) => DrawMonitors();
+
+    private void SelectMonitor(MonitorInfo m)
+    {
+        if (_rec != null && _rec.State is RecState.Recording or RecState.Paused or RecState.Finalizing) return;
+        _selected = m;
+        DrawMonitors();
+        UpdateSelectedInfo();
+    }
+
+    private void UpdateSelectedInfo()
+    {
+        if (_selected == null) { SelectedInfo.Text = "Nenhum monitor selecionado"; SelectedInfo2.Text = ""; return; }
+        var m = _selected;
+        SelectedInfo.Text = $"{m.Name}  ·  {m.Resolution}" + (m.IsPrimary ? "  ·  Principal" : "");
+        SelectedInfo2.Text = $"{m.Orientation}  ·  Escala do Windows {m.DpiPercent}%  ·  Posição ({m.X}, {m.Y})  ·  {_monitors.Count} monitor(es) detectado(s)";
+    }
+
+    private void DrawMonitors()
+    {
+        MonitorCanvas.Children.Clear();
+        if (_monitors.Count == 0) return;
+        double hostW = LayoutHost.ActualWidth, hostH = LayoutHost.ActualHeight;
+        if (hostW < 60 || hostH < 60) return;
+
+        int minX = _monitors.Min(m => m.X), minY = _monitors.Min(m => m.Y);
+        int maxX = _monitors.Max(m => m.X + m.Width), maxY = _monitors.Max(m => m.Y + m.Height);
+        double totW = maxX - minX, totH = maxY - minY;
+        const double pad = 12;
+        double s = Math.Min((hostW - 2 * pad) / totW, (hostH - 2 * pad) / totH);
+        double ox = (hostW - totW * s) / 2, oy = (hostH - totH * s) / 2;
+
+        var accent = (Brush)FindResource("Accent");
+        var border = (Brush)FindResource("Border");
+        var surface2 = (Brush)FindResource("Surface2");
+
+        foreach (var m in _monitors)
+        {
+            bool sel = _selected?.DeviceName == m.DeviceName;
+            var card = new Border
+            {
+                Width = Math.Max(24, m.Width * s - 4),
+                Height = Math.Max(24, m.Height * s - 4),
+                CornerRadius = new CornerRadius(8),
+                BorderThickness = new Thickness(sel ? 3 : 1),
+                BorderBrush = sel ? accent : border,
+                Background = surface2,
+                Opacity = sel ? 1.0 : 0.75,
+                Cursor = Cursors.Hand,
+                ToolTip = $"{m.Name} — {m.Resolution}",
+            };
+            if (_thumbs.TryGetValue(m.DeviceName, out var th) && th != null)
+                card.Background = new ImageBrush(th) { Stretch = Stretch.Fill };
+
+            card.Child = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(190, 15, 17, 21)),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(6),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Child = new TextBlock
+                {
+                    Text = $"{m.Number}  ·  {m.Resolution}",
+                    Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                },
+            };
+
+            var captured = m;
+            card.MouseLeftButtonUp += (_, _) => SelectMonitor(captured);
+            Canvas.SetLeft(card, ox + (m.X - minX) * s + 2);
+            Canvas.SetTop(card, oy + (m.Y - minY) * s + 2);
+            MonitorCanvas.Children.Add(card);
+        }
+    }
+
+    // ------------------------------------------------------------------ gravação
+    private AppSettings ReadSettings()
+    {
+        _cfg.OutputFolder = FolderBox.Text.Trim();
+        _cfg.FileName = NameBox.Text.Trim();
+        _cfg.Fps = Fps60.IsChecked == true ? 60 : 30;
+        _cfg.Quality = QEco.IsChecked == true ? VideoQuality.Economy : QHigh.IsChecked == true ? VideoQuality.High : VideoQuality.Balanced;
+        _cfg.UseHardware = HwCheck.IsChecked == true;
+        _cfg.HideWindowFromCapture = HideCheck.IsChecked == true;
+        return _cfg;
+    }
+
+    private async void RecButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _rec == null || _selected == null) return;
+        _busy = true;
+        try
+        {
+            var cfg = ReadSettings();
+            cfg.Save(_settingsPath);
+
+            if (string.IsNullOrWhiteSpace(cfg.OutputFolder)) { ShowError("Escolha uma pasta para salvar os vídeos."); return; }
+
+            // Revalida o monitor imediatamente antes de gravar (evita gravar a tela errada).
+            var fresh = DxgiMap.Annotate(MonitorEnumerator.GetAll());
+            _monitors = fresh;
+            var target = fresh.FirstOrDefault(m => m.DeviceName == _selected.DeviceName);
+            if (target == null)
+            {
+                RefreshMonitors();
+                ShowError("O monitor selecionado não está mais disponível. Selecione outro e tente novamente.");
+                return;
+            }
+            if (!target.SameGeometryAs(_selected)) _selected = target;
+
+            long? free = DiskSpace.FreeBytes(cfg.OutputFolder);
+            if (free != null && free < 500L * 1024 * 1024)
+            {
+                ShowError($"Espaço em disco insuficiente ({TimeFormat.Bytes(free.Value)} livres). Libere espaço ou escolha outra pasta.");
+                return;
+            }
+
+            var name = FileNamer.Sanitize(cfg.FileName);
+            if (name.Length == 0) name = FileNamer.DefaultName(DateTime.Now);
+            string path;
+            try { path = FileNamer.UniquePath(cfg.OutputFolder, name); }
+            catch (Exception ex) { ShowError("Pasta de destino inválida: " + ex.Message); return; }
+
+            bool allowGdi = fresh.All(m => m.DpiPercent == 100);
+            var enc = cfg.UseHardware ? _hw : VideoEncoder.Cpu;
+
+            RecButton.IsEnabled = false;
+            ShowInfo("Iniciando a captura…");
+            _warnedDisk = false; _ticks = 0;
+            TimerText.Text = "00:00:00";
+
+            var err = await _rec.StartAsync(target, allowGdi, cfg.Fps, cfg.Quality, enc, path);
+            if (err != null)
+            {
+                ShowError(err);
+                ApplyState(RecState.Error);
+                return;
+            }
+
+            _lastFile = null;
+            if (!string.IsNullOrEmpty(cfg.OutputFolder)) HideMessageIfNoWarning();
+            SetCaptureExclusion(cfg.HideWindowFromCapture);
+            _timer.Start();
+        }
+        finally { _busy = false; }
+    }
+
+    private async void PauseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _rec == null) return;
+        _busy = true;
+        PauseButton.IsEnabled = false;
+        try
+        {
+            if (_rec.State == RecState.Recording) await _rec.PauseAsync();
+            else if (_rec.State == RecState.Paused)
+            {
+                var err = await _rec.ResumeAsync();
+                if (err != null) ShowError(err);
+            }
+        }
+        finally { _busy = false; PauseButton.IsEnabled = true; }
+    }
+
+    private async void StopButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _rec == null) return;
+        _busy = true;
+        try
+        {
+            ShowInfo("Finalizando e salvando o vídeo… não feche o programa.");
+            var r = await _rec.FinishAsync();
+            ShowResult(r);
+        }
+        finally { _busy = false; if (_closeAfter) { _closing = true; Close(); } }
+    }
+
+    private void Timer_Tick(object? sender, EventArgs e)
+    {
+        if (_rec == null) return;
+        TimerText.Text = TimeFormat.Format(_rec.Elapsed);
+        if (_rec.State != RecState.Recording) return;
+        if (++_ticks % 20 == 0) _ = CheckDiskAsync();
+    }
+
+    private async Task CheckDiskAsync()
+    {
+        if (_rec == null) return;
+        var free = DiskSpace.FreeBytes(_rec.OutputFolder);
+        if (free == null) return;
+        if (free < 1024L * 1024 * 1024)
+        {
+            var r = await _rec.FinishAsync("O espaço em disco está acabando; a gravação foi finalizada para proteger o arquivo.");
+            ShowResult(r);
+        }
+        else if (free < 3L * 1024 * 1024 * 1024 && !_warnedDisk)
+        {
+            _warnedDisk = true;
+            ShowInfo($"Atenção: restam apenas {TimeFormat.Bytes(free.Value)} no disco de destino.");
+        }
+    }
+
+    // ------------------------------------------------------------------ estado da interface
+    private void ApplyState(RecState s)
+    {
+        var green = (Brush)FindResource("Green");
+        var red = (Brush)FindResource("Red");
+        var amber = (Brush)FindResource("Amber");
+        var accent = (Brush)FindResource("Accent");
+
+        StatusDot.BeginAnimation(OpacityProperty, null);
+        StatusDot.Opacity = 1;
+        bool active = s is RecState.Recording or RecState.Paused or RecState.Finalizing;
+
+        SettingsPanel.IsEnabled = !active;
+        RefreshButton.IsEnabled = !active;
+        RecButton.Visibility = (s is RecState.Recording or RecState.Paused or RecState.Finalizing) ? Visibility.Collapsed : Visibility.Visible;
+        PauseButton.Visibility = (s is RecState.Recording or RecState.Paused) ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.Visibility = (s is RecState.Recording or RecState.Paused) ? Visibility.Visible : Visibility.Collapsed;
+
+        switch (s)
+        {
+            case RecState.Ready:
+                StatusDot.Fill = green; StatusText.Text = "Pronto para gravar"; Title = "TelaRec";
+                RecButton.IsEnabled = _monitors.Count > 0; break;
+            case RecState.Recording:
+                StatusDot.Fill = red; StatusText.Text = "Gravando"; Title = "● Gravando — TelaRec";
+                PauseButton.Content = "Pausar";
+                StatusDot.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0.25, TimeSpan.FromMilliseconds(700))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+                break;
+            case RecState.Paused:
+                StatusDot.Fill = amber; StatusText.Text = "Gravação pausada"; Title = "⏸ Pausado — TelaRec";
+                PauseButton.Content = "Retomar"; break;
+            case RecState.Finalizing:
+                StatusDot.Fill = accent; StatusText.Text = "Finalizando e salvando o vídeo…"; break;
+            case RecState.Done:
+                _timer.Stop(); ClearCaptureExclusion();
+                StatusDot.Fill = green; StatusText.Text = "Gravação concluída"; Title = "TelaRec";
+                RecButton.IsEnabled = _monitors.Count > 0; break;
+            case RecState.Error:
+                _timer.Stop(); ClearCaptureExclusion();
+                StatusDot.Fill = red; StatusText.Text = "Erro de gravação"; Title = "TelaRec";
+                RecButton.IsEnabled = _monitors.Count > 0; break;
+        }
+    }
+
+    private void SetCaptureExclusion(bool on)
+    {
+        if (!on) return;
+        var h = new WindowInteropHelper(this).Handle;
+        if (h == IntPtr.Zero) return;
+        _affinityApplied = NativeMethods.SetWindowDisplayAffinity(h, 0x11); // WDA_EXCLUDEFROMCAPTURE
+        if (!_affinityApplied) WindowState = WindowState.Minimized;
+    }
+
+    private void ClearCaptureExclusion()
+    {
+        if (!_affinityApplied) return;
+        var h = new WindowInteropHelper(this).Handle;
+        if (h != IntPtr.Zero) NativeMethods.SetWindowDisplayAffinity(h, 0);
+        _affinityApplied = false;
+    }
+
+    // ------------------------------------------------------------------ mensagens
+    private void ShowInfo(string text) => SetMessage(text, (Brush)FindResource("Text"), false);
+    private void ShowError(string text) => SetMessage(text, (Brush)FindResource("Red"), false);
+
+    private void SetMessage(string text, Brush color, bool actions)
+    {
+        MessageText.Text = text; MessageText.Foreground = color;
+        ActionsPanel.Visibility = actions ? Visibility.Visible : Visibility.Collapsed;
+        MessageBorder.Visibility = Visibility.Visible;
+    }
+
+    private void HideMessage() => MessageBorder.Visibility = Visibility.Collapsed;
+    private void HideMessageIfNoWarning()
+    {
+        if (!MessageText.Text.StartsWith("Aviso")) HideMessage();
+    }
+
+    private void ShowResult(RecordingResult r)
+    {
+        if (r.Ignored) return;
+        _lastFile = r.FilePath;
+        _folderToOpen = r.FilePath != null ? System.IO.Path.GetDirectoryName(r.FilePath) : r.KeptFolder;
+        SetMessage(r.Message, (Brush)FindResource(r.Success ? "Green" : "Red"), _folderToOpen != null);
+        PlayButton.Visibility = _lastFile != null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_lastFile != null && File.Exists(_lastFile))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{_lastFile}\"") { UseShellExecute = true });
+            else if (_folderToOpen != null && Directory.Exists(_folderToOpen))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_folderToOpen}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowError("Não foi possível abrir a pasta: " + ex.Message); }
+    }
+
+    private void PlayButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { if (_lastFile != null) Process.Start(new ProcessStartInfo(_lastFile) { UseShellExecute = true }); }
+        catch (Exception ex) { ShowError("Não foi possível abrir o vídeo: " + ex.Message); }
+    }
+
+    private void BrowseButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog { Title = "Escolha a pasta para salvar as gravações" };
+        if (Directory.Exists(FolderBox.Text)) dlg.InitialDirectory = FolderBox.Text;
+        if (dlg.ShowDialog(this) == true) FolderBox.Text = dlg.FolderName;
+    }
+
+    // ------------------------------------------------------------------ encerramento
+    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_closing) { ReadSettings().Save(_settingsPath); _rec?.Dispose(); return; }
+        var rec = _rec;
+        if (rec != null && rec.State is RecState.Recording or RecState.Paused or RecState.Finalizing)
+        {
+            e.Cancel = true;
+            if (rec.State == RecState.Finalizing) { _closeAfter = true; return; }
+
+            var ans = MessageBox.Show(this,
+                "Há uma gravação em andamento. Deseja finalizar e salvar o vídeo antes de sair?",
+                "TelaRec", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (ans != MessageBoxResult.Yes) return;
+
+            var r = await rec.FinishAsync();
+            if (!r.Success && !r.Ignored) MessageBox.Show(this, r.Message, "TelaRec", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _closing = true;
+            Close();
+            return;
+        }
+        ReadSettings().Save(_settingsPath);
+        rec?.Dispose();
+    }
+}
