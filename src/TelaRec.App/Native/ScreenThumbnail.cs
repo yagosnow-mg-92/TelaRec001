@@ -1,11 +1,10 @@
-using System.Windows;
-using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using TelaRec.Core;
 
 namespace TelaRec.Native;
 
-/// <summary>Miniatura barata de um monitor (usada só para ajudar a identificar a tela correta).</summary>
+/// <summary>Miniatura barata de um monitor (usada para o usuário reconhecer a tela correta, ao vivo).</summary>
 internal static class ScreenThumbnail
 {
     public static BitmapSource? Capture(MonitorInfo m, int maxWidth = 480)
@@ -22,8 +21,19 @@ internal static class ScreenThumbnail
             old = NativeMethods.SelectObject(mem, bmp);
             NativeMethods.SetStretchBltMode(mem, 4); // HALFTONE
             NativeMethods.StretchBlt(mem, 0, 0, w, h, screen, m.X, m.Y, m.Width, m.Height, 0x00CC0020); // SRCCOPY
-            var src = Imaging.CreateBitmapSourceFromHBitmap(bmp, IntPtr.Zero, Int32Rect.Empty,
-                BitmapSizeOptions.FromEmptyOptions());
+            NativeMethods.SelectObject(mem, old); old = IntPtr.Zero; // GetDIBits exige bitmap fora do DC
+
+            // Lê os pixels crus (BGRA, canal alfa ignorado) — evita a miniatura "transparente/preta".
+            var bi = new BITMAPINFOHEADER
+            {
+                biSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<BITMAPINFOHEADER>(),
+                biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32, biCompression = 0,
+            };
+            var pixels = new byte[w * h * 4];
+            int lines = NativeMethods.GetDIBits(screen, bmp, 0, (uint)h, pixels, ref bi, 0);
+            if (lines == 0) return null;
+
+            var src = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgr32, null, pixels, w * 4);
             src.Freeze();
             return src;
         }

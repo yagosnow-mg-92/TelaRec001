@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     private bool _busy, _closing, _closeAfter, _warnedDisk;
     private string? _lastFile, _folderToOpen;
     private bool _affinityApplied;
+    private readonly Dictionary<string, Border> _cards = new();
+    private readonly DispatcherTimer _liveTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     public MainWindow()
     {
@@ -50,8 +52,10 @@ public partial class MainWindow : Window
         HideCheck.IsChecked = _cfg.HideWindowFromCapture;
 
         _timer.Tick += Timer_Tick;
+        _liveTimer.Tick += (_, _) => LiveTick();
         Loaded += async (_, _) => await InitAsync();
         Closing += Window_Closing;
+        Closed += (_, _) => _liveTimer.Stop();
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
@@ -69,6 +73,7 @@ public partial class MainWindow : Window
         _rec.Interrupted += r => Dispatcher.InvokeAsync(() => ShowResult(r));
 
         RefreshMonitors();
+        _liveTimer.Start();
         ShowInfo("Verificando aceleração de hardware…");
         _hw = await EncoderProbe.DetectBestAsync(path);
         EncoderInfo.Text = _hw == VideoEncoder.Cpu
@@ -125,6 +130,21 @@ public partial class MainWindow : Window
         ShowResult(r);
     }
 
+    /// <summary>Atualiza as miniaturas ~1x por segundo para mostrar o conteúdo ao vivo de cada tela.</summary>
+    private void LiveTick()
+    {
+        if (_rec == null || WindowState == WindowState.Minimized || !IsVisible) return;
+        if (_rec.State is RecState.Recording or RecState.Paused or RecState.Finalizing) return;
+        foreach (var m in _monitors)
+        {
+            if (!_cards.TryGetValue(m.DeviceName, out var card)) continue;
+            var th = ScreenThumbnail.Capture(m);
+            if (th == null) continue;
+            _thumbs[m.DeviceName] = th;
+            card.Background = new ImageBrush(th) { Stretch = Stretch.Fill };
+        }
+    }
+
     private void LayoutHost_SizeChanged(object sender, SizeChangedEventArgs e) => DrawMonitors();
 
     private void SelectMonitor(MonitorInfo m)
@@ -146,6 +166,7 @@ public partial class MainWindow : Window
     private void DrawMonitors()
     {
         MonitorCanvas.Children.Clear();
+        _cards.Clear();
         if (_monitors.Count == 0) return;
         double hostW = LayoutHost.ActualWidth, hostH = LayoutHost.ActualHeight;
         if (hostW < 60 || hostH < 60) return;
@@ -199,6 +220,7 @@ public partial class MainWindow : Window
             Canvas.SetLeft(card, ox + (m.X - minX) * s + 2);
             Canvas.SetTop(card, oy + (m.Y - minY) * s + 2);
             MonitorCanvas.Children.Add(card);
+            _cards[m.DeviceName] = card;
         }
     }
 
@@ -364,11 +386,11 @@ public partial class MainWindow : Window
             case RecState.Finalizing:
                 StatusDot.Fill = accent; StatusText.Text = "Finalizando e salvando o vídeo…"; break;
             case RecState.Done:
-                _timer.Stop(); ClearCaptureExclusion();
+                _timer.Stop(); ClearCaptureExclusion(); TimerText.Text = "00:00:00";
                 StatusDot.Fill = green; StatusText.Text = "Gravação concluída"; Title = "TelaRec";
                 RecButton.IsEnabled = _monitors.Count > 0; break;
             case RecState.Error:
-                _timer.Stop(); ClearCaptureExclusion();
+                _timer.Stop(); ClearCaptureExclusion(); TimerText.Text = "00:00:00";
                 StatusDot.Fill = red; StatusText.Text = "Erro de gravação"; Title = "TelaRec";
                 RecButton.IsEnabled = _monitors.Count > 0; break;
         }

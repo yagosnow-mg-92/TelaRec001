@@ -5,8 +5,20 @@ namespace TelaRec.Native;
 [StructLayout(LayoutKind.Sequential)]
 internal struct RECT { public int Left, Top, Right, Bottom; }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct BITMAPINFOHEADER
+{
+    public uint biSize; public int biWidth; public int biHeight; public ushort biPlanes; public ushort biBitCount;
+    public uint biCompression; public uint biSizeImage; public int biXPelsPerMeter; public int biYPelsPerMeter;
+    public uint biClrUsed; public uint biClrImportant;
+}
+
 internal static class NativeMethods
 {
+    [DllImport("gdi32.dll")]
+    internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, byte[]? bits,
+        ref BITMAPINFOHEADER bmi, uint usage);
+
     [DllImport("user32.dll")] internal static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint affinity);
     [DllImport("user32.dll")] internal static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] internal static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
