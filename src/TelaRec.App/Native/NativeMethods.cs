@@ -15,6 +15,12 @@ internal struct BITMAPINFOHEADER
 
 internal static class NativeMethods
 {
+    [DllImport("user32.dll")] internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [DllImport("user32.dll")]
+    internal static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] internal static extern IntPtr GetModuleHandle(string? name);
+
     [DllImport("gdi32.dll")]
     internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, byte[]? bits,
         ref BITMAPINFOHEADER bmi, uint usage);

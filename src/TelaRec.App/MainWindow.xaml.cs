@@ -32,6 +32,10 @@ public partial class MainWindow : Window
     private string? _lastFile, _folderToOpen;
     private bool _affinityApplied;
     private readonly Dictionary<string, Border> _cards = new();
+    private readonly MouseHook _hook = new();
+    private ClickOverlay? _overlay;
+    private MonitorInfo? _recTarget;
+    private bool _fxEnabled, _fxSound;
     private readonly DispatcherTimer _liveTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     public MainWindow()
@@ -50,12 +54,14 @@ public partial class MainWindow : Window
         }
         HwCheck.IsChecked = _cfg.UseHardware;
         HideCheck.IsChecked = _cfg.HideWindowFromCapture;
+        ClickFxCheck.IsChecked = _cfg.ClickEffect;
+        ClickSoundCheck.IsChecked = _cfg.ClickSound;
 
         _timer.Tick += Timer_Tick;
         _liveTimer.Tick += (_, _) => LiveTick();
         Loaded += async (_, _) => await InitAsync();
         Closing += Window_Closing;
-        Closed += (_, _) => _liveTimer.Stop();
+        Closed += (_, _) => { _liveTimer.Stop(); StopClickFx(); _hook.Dispose(); };
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
@@ -233,6 +239,8 @@ public partial class MainWindow : Window
         _cfg.Quality = QEco.IsChecked == true ? VideoQuality.Economy : QHigh.IsChecked == true ? VideoQuality.High : VideoQuality.Balanced;
         _cfg.UseHardware = HwCheck.IsChecked == true;
         _cfg.HideWindowFromCapture = HideCheck.IsChecked == true;
+        _cfg.ClickEffect = ClickFxCheck.IsChecked == true;
+        _cfg.ClickSound = ClickSoundCheck.IsChecked == true;
         return _cfg;
     }
 
@@ -280,6 +288,7 @@ public partial class MainWindow : Window
             _warnedDisk = false; _ticks = 0;
             TimerText.Text = "00:00:00";
 
+            _fxEnabled = cfg.ClickEffect; _fxSound = cfg.ClickSound; _recTarget = target;
             var err = await _rec.StartAsync(target, allowGdi, cfg.Fps, cfg.Quality, enc, path);
             if (err != null)
             {
@@ -372,25 +381,25 @@ public partial class MainWindow : Window
         switch (s)
         {
             case RecState.Ready:
-                StatusDot.Fill = green; StatusText.Text = "Pronto para gravar"; Title = "TelaRec";
+                StatusDot.Fill = green; StatusText.Text = "Pronto para gravar"; Title = "TelaRec"; StopClickFx();
                 RecButton.IsEnabled = _monitors.Count > 0; break;
             case RecState.Recording:
-                StatusDot.Fill = red; StatusText.Text = "Gravando"; Title = "● Gravando — TelaRec";
+                StatusDot.Fill = red; StatusText.Text = "Gravando"; Title = "● Gravando — TelaRec"; StartClickFx();
                 PauseButton.Content = "Pausar";
                 StatusDot.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0.25, TimeSpan.FromMilliseconds(700))
                 { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
                 break;
             case RecState.Paused:
-                StatusDot.Fill = amber; StatusText.Text = "Gravação pausada"; Title = "⏸ Pausado — TelaRec";
+                StatusDot.Fill = amber; StatusText.Text = "Gravação pausada"; Title = "⏸ Pausado — TelaRec"; PauseClickFx();
                 PauseButton.Content = "Retomar"; break;
             case RecState.Finalizing:
-                StatusDot.Fill = accent; StatusText.Text = "Finalizando e salvando o vídeo…"; break;
+                StatusDot.Fill = accent; StatusText.Text = "Finalizando e salvando o vídeo…"; PauseClickFx(); break;
             case RecState.Done:
-                _timer.Stop(); ClearCaptureExclusion(); TimerText.Text = "00:00:00";
+                _timer.Stop(); ClearCaptureExclusion(); StopClickFx(); TimerText.Text = "00:00:00";
                 StatusDot.Fill = green; StatusText.Text = "Gravação concluída"; Title = "TelaRec";
                 RecButton.IsEnabled = _monitors.Count > 0; break;
             case RecState.Error:
-                _timer.Stop(); ClearCaptureExclusion(); TimerText.Text = "00:00:00";
+                _timer.Stop(); ClearCaptureExclusion(); StopClickFx(); TimerText.Text = "00:00:00";
                 StatusDot.Fill = red; StatusText.Text = "Erro de gravação"; Title = "TelaRec";
                 RecButton.IsEnabled = _monitors.Count > 0; break;
         }
@@ -411,6 +420,45 @@ public partial class MainWindow : Window
         var h = new WindowInteropHelper(this).Handle;
         if (h != IntPtr.Zero) NativeMethods.SetWindowDisplayAffinity(h, 0);
         _affinityApplied = false;
+    }
+
+    // ------------------------------------------------------------------ efeito de clique
+    private void ClickHelpButton_Click(object sender, RoutedEventArgs e) => ClickHelpPopup.IsOpen = true;
+
+    private void StartClickFx()
+    {
+        if (!_fxEnabled || _recTarget == null) return;
+        try
+        {
+            if (_overlay == null) { _overlay = new ClickOverlay(_recTarget); _overlay.Show(); }
+            _hook.Click -= OnGlobalClick;
+            _hook.Click += OnGlobalClick;
+            _hook.Start();
+        }
+        catch (Exception ex)
+        {
+            ShowInfo("Aviso: não foi possível ativar o efeito de clique (" + ex.Message + "). A gravação continua normalmente.");
+        }
+    }
+
+    private void PauseClickFx() => _hook.Stop();
+
+    private void StopClickFx()
+    {
+        _hook.Stop();
+        if (_overlay != null) { try { _overlay.Close(); } catch { } _overlay = null; }
+    }
+
+    private void OnGlobalClick(int x, int y, bool left)
+    {
+        var mon = _recTarget;
+        if (mon == null || _overlay == null) return;
+        if (x < mon.X || y < mon.Y || x >= mon.X + mon.Width || y >= mon.Y + mon.Height) return; // só o monitor gravado
+        Dispatcher.InvokeAsync(() =>
+        {
+            _overlay?.Ripple(x, y, left);
+            if (_fxSound) ClickSounds.Play(left);
+        });
     }
 
     // ------------------------------------------------------------------ mensagens

@@ -22,6 +22,17 @@ O executável tem ~60–80 MB porque embute o .NET e o FFmpeg. Na primeira execu
 3. Escolha pasta, nome (opcional), FPS e qualidade.
 4. **Iniciar gravação** → **Pausar/Retomar** → **Finalizar**. O tempo em pausa não entra no vídeo.
 
+## Efeito de clique (opcional)
+
+Em **Configurações → Efeito de clique do mouse** (botão **?** explica as cores):
+
+| Botão | Efeito no vídeo | Som |
+|---|---|---|
+| Esquerdo | círculo **azul** que cresce no ponto exato do clique | clique agudo |
+| Direito | círculo **laranja** que cresce no ponto exato do clique | clique mais grave |
+
+Funciona só no monitor gravado e não aparece durante a pausa. O círculo é desenhado numa janela transparente e "atravessável" sobre o monitor, por isso entra no vídeo. O **som é só aviso para você** (a v1 não grava áudio). O hook de mouse só fica ativo durante a gravação e apenas lê os cliques; nada é armazenado.
+
 ## Escolhas técnicas
 
 | Item | Escolha | Motivo |

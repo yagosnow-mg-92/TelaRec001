@@ -60,6 +60,8 @@ public sealed class AppSettings
     public VideoQuality Quality { get; set; } = VideoQuality.Balanced;
     public bool UseHardware { get; set; } = true;
     public bool HideWindowFromCapture { get; set; } = true;
+    public bool ClickEffect { get; set; } = false;
+    public bool ClickSound { get; set; } = true;
 
     public static AppSettings Load(string path)
     {

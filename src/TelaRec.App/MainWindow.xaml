@@ -89,6 +89,40 @@
                         <StackPanel Grid.Row="4" Grid.Column="1">
                             <CheckBox x:Name="HwCheck" Content="Usar aceleração por hardware quando disponível" Foreground="{StaticResource Text}" Margin="0,0,0,6"/>
                             <CheckBox x:Name="HideCheck" Content="Esconder esta janela da gravação" Foreground="{StaticResource Text}" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <CheckBox x:Name="ClickFxCheck" VerticalAlignment="Center" Foreground="{StaticResource Text}"
+                                          Content="Efeito de clique do mouse"
+                                          ToolTip="Mostra um círculo colorido no ponto de cada clique (azul = esquerdo, laranja = direito)"/>
+                                <Button x:Name="ClickHelpButton" Content="?" Style="{StaticResource HelpBtn}" Margin="10,0,0,0"
+                                        ToolTip="Como funciona o efeito de clique" Click="ClickHelpButton_Click"/>
+                                <Popup x:Name="ClickHelpPopup" PlacementTarget="{Binding ElementName=ClickHelpButton}"
+                                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                                    <Border Background="{StaticResource Surface2}" BorderBrush="{StaticResource Accent}"
+                                            BorderThickness="1" CornerRadius="12" Padding="16" Width="360" Margin="0,6,14,14"
+                                            TextElement.Foreground="{StaticResource Text}">
+                                        <StackPanel>
+                                            <TextBlock Text="Efeito de clique" FontWeight="SemiBold" FontSize="15"/>
+                                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,12"
+                                                       Text="Desenha um círculo animado no ponto exato de cada clique. Ele aparece no vídeo gravado."/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <Ellipse Width="18" Height="18" Fill="#2F9BFF" Stroke="White" StrokeThickness="1.5" VerticalAlignment="Top"/>
+                                                <TextBlock Margin="10,0,0,0" TextWrapping="Wrap" Width="290">
+                                                    <Run FontWeight="SemiBold" Text="Botão esquerdo: "/><Run Text="círculo AZUL e som de clique agudo."/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                <Ellipse Width="18" Height="18" Fill="#FF8A1F" Stroke="White" StrokeThickness="1.5" VerticalAlignment="Top"/>
+                                                <TextBlock Margin="10,0,0,0" TextWrapping="Wrap" Width="290">
+                                                    <Run FontWeight="SemiBold" Text="Botão direito: "/><Run Text="círculo LARANJA e som de clique mais grave."/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12"
+                                                       Text="• Só aparece no monitor que está sendo gravado.&#10;• O som é apenas um aviso para você: o vídeo não grava áudio.&#10;• Cliques feitos durante a pausa não aparecem."/>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </StackPanel>
+                            <CheckBox x:Name="ClickSoundCheck" Content="Tocar som ao clicar (somente para você ouvir)" Foreground="{StaticResource Text}" Margin="24,0,0,6"/>
                             <TextBlock x:Name="EncoderInfo" Foreground="{StaticResource Muted}" FontSize="12" Text=""/>
                         </StackPanel>
                     </Grid>

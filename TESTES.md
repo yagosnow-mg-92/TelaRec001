@@ -33,3 +33,7 @@ Marque conforme for validando. Para cada item anote Windows, GPU e resultado.
 | 23 | Sem internet: tudo funciona; nenhum tráfego de rede do app | ☐ |
 | 24 | Após fechar, nenhum `ffmpeg.exe` ou `TelaRec.exe` fica no Gerenciador de Tarefas | ☐ |
 | 25 | Nome de arquivo repetido não sobrescreve | ☐ |
+| 26 | Efeito de clique: círculo AZUL no clique esquerdo e LARANJA no direito, no ponto exato, visíveis no vídeo gravado | ☐ |
+| 27 | Efeito de clique em monitor secundário, com escala de DPI ≠ 100% e com coordenadas negativas: círculo no lugar certo | ☐ |
+| 28 | Sons diferentes para esquerdo/direito; sem efeito durante pausa; clique em outro monitor não gera efeito | ☐ |
+| 29 | Efeito de clique desligado: nenhum hook/janela extra; mouse sem atraso perceptível com o efeito ligado | ☐ |

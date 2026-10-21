@@ -100,11 +100,13 @@ public class HelpersTests : IDisposable
     public void Settings_RoundTrip()
     {
         var path = Path.Combine(_dir, "s.json");
-        new AppSettings { Fps = 60, Quality = VideoQuality.High, FileName = "x" }.Save(path);
+        new AppSettings { Fps = 60, Quality = VideoQuality.High, FileName = "x", ClickEffect = true, ClickSound = false }.Save(path);
         var s = AppSettings.Load(path);
         Assert.Equal(60, s.Fps);
         Assert.Equal(VideoQuality.High, s.Quality);
         Assert.Equal("x", s.FileName);
+        Assert.True(s.ClickEffect);
+        Assert.False(s.ClickSound);
     }
 
     [Fact]
