@@ -9,6 +9,8 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using NAudio.CoreAudioApi;
+using NAudio.Wave;
 using TelaRec.Core;
 using TelaRec.Native;
 using TelaRec.Services;
@@ -36,6 +38,12 @@ public partial class MainWindow : Window
     private ClickOverlay? _overlay;
     private MonitorInfo? _recTarget;
     private bool _fxEnabled, _fxSound;
+    private CaptureSource? _testSrc;
+    private MicProcessor? _testProc;
+    private readonly DispatcherTimer _meterTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly float[] _meterBuf = new float[9600];
+    private double _meterLevel;
+    private int _silentTicks;
     private readonly DispatcherTimer _liveTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     public MainWindow()
@@ -56,12 +64,31 @@ public partial class MainWindow : Window
         HideCheck.IsChecked = _cfg.HideWindowFromCapture;
         ClickFxCheck.IsChecked = _cfg.ClickEffect;
         ClickSoundCheck.IsChecked = _cfg.ClickSound;
+        SysAudioCheck.IsChecked = _cfg.RecordSystemAudio;
+        MicCheck.IsChecked = _cfg.RecordMic;
+        DenoiseCheck.IsChecked = _cfg.Denoise;
+        SysGainSlider.Value = Math.Clamp(_cfg.SystemGainPct, 0, 200);
+        MicGainSlider.Value = Math.Clamp(_cfg.MicGainPct, 0, 300);
+        SysGainText.Text = (int)SysGainSlider.Value + "%";
+        MicGainText.Text = (int)MicGainSlider.Value + "%";
+        SyncBox.Text = Math.Clamp(_cfg.AudioSyncDelayMs, 0, 3000).ToString();
+        switch (_cfg.DenoiseLevel) { case 0: DnLow.IsChecked = true; break; case 2: DnHigh.IsChecked = true; break; default: DnMed.IsChecked = true; break; }
+        // Eventos dos sliders são ligados aqui (e não no XAML) para não dispararem durante a construção da janela.
+        SysGainSlider.ValueChanged += (_, _) => SysGainText.Text = (int)SysGainSlider.Value + "%";
+        MicGainSlider.ValueChanged += (_, _) =>
+        {
+            MicGainText.Text = (int)MicGainSlider.Value + "%";
+            if (_testSrc != null) _testProc = NewMicProcessor();
+        };
+        _meterTimer.Tick += MeterTick;
+        UpdateAudioUi();
+        if (_cfg.RecordMic) LoadMics();
 
         _timer.Tick += Timer_Tick;
         _liveTimer.Tick += (_, _) => LiveTick();
         Loaded += async (_, _) => await InitAsync();
         Closing += Window_Closing;
-        Closed += (_, _) => { _liveTimer.Stop(); StopClickFx(); _hook.Dispose(); };
+        Closed += (_, _) => { _liveTimer.Stop(); StopMicTest(); StopClickFx(); _hook.Dispose(); };
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
@@ -241,6 +268,14 @@ public partial class MainWindow : Window
         _cfg.HideWindowFromCapture = HideCheck.IsChecked == true;
         _cfg.ClickEffect = ClickFxCheck.IsChecked == true;
         _cfg.ClickSound = ClickSoundCheck.IsChecked == true;
+        _cfg.RecordSystemAudio = SysAudioCheck.IsChecked == true;
+        _cfg.RecordMic = MicCheck.IsChecked == true;
+        _cfg.Denoise = DenoiseCheck.IsChecked == true;
+        _cfg.SystemGainPct = (int)SysGainSlider.Value;
+        _cfg.MicGainPct = (int)MicGainSlider.Value;
+        _cfg.DenoiseLevel = DenoiseLevelIndex();
+        if (SelectedMic != null) _cfg.MicDeviceId = SelectedMic.Id;
+        _cfg.AudioSyncDelayMs = int.TryParse(SyncBox.Text.Trim(), out var sd) ? Math.Clamp(sd, 0, 3000) : 450;
         return _cfg;
     }
 
@@ -267,6 +302,18 @@ public partial class MainWindow : Window
             }
             if (!target.SameGeometryAs(_selected)) _selected = target;
 
+            var mic = SelectedMic;
+            if (cfg.RecordMic && mic == null)
+            {
+                ShowError("Selecione um microfone na lista (use \"Detectar microfones\") ou desmarque \"Gravar o microfone\".");
+                return;
+            }
+            StopMicTest();
+            var audio = (cfg.RecordSystemAudio || cfg.RecordMic)
+                ? new AudioOptions(cfg.RecordSystemAudio, cfg.RecordMic, mic?.Id, cfg.SystemGainPct / 100f,
+                    cfg.MicGainPct / 100f, cfg.Denoise, cfg.DenoiseLevel, cfg.AudioSyncDelayMs)
+                : AudioOptions.None;
+
             long? free = DiskSpace.FreeBytes(cfg.OutputFolder);
             if (free != null && free < 500L * 1024 * 1024)
             {
@@ -289,7 +336,7 @@ public partial class MainWindow : Window
             TimerText.Text = "00:00:00";
 
             _fxEnabled = cfg.ClickEffect; _fxSound = cfg.ClickSound; _recTarget = target;
-            var err = await _rec.StartAsync(target, allowGdi, cfg.Fps, cfg.Quality, enc, path);
+            var err = await _rec.StartAsync(target, allowGdi, cfg.Fps, cfg.Quality, enc, path, audio);
             if (err != null)
             {
                 ShowError(err);
@@ -373,6 +420,7 @@ public partial class MainWindow : Window
         bool active = s is RecState.Recording or RecState.Paused or RecState.Finalizing;
 
         SettingsPanel.IsEnabled = !active;
+        AudioPanel.IsEnabled = !active;
         RefreshButton.IsEnabled = !active;
         RecButton.Visibility = (s is RecState.Recording or RecState.Paused or RecState.Finalizing) ? Visibility.Collapsed : Visibility.Visible;
         PauseButton.Visibility = (s is RecState.Recording or RecState.Paused) ? Visibility.Visible : Visibility.Collapsed;
@@ -420,6 +468,113 @@ public partial class MainWindow : Window
         var h = new WindowInteropHelper(this).Handle;
         if (h != IntPtr.Zero) NativeMethods.SetWindowDisplayAffinity(h, 0);
         _affinityApplied = false;
+    }
+
+    // ------------------------------------------------------------------ áudio
+    private MicDevice? SelectedMic => MicList.SelectedItem as MicDevice;
+
+    private int DenoiseLevelIndex() => DnLow.IsChecked == true ? 0 : DnHigh.IsChecked == true ? 2 : 1;
+
+    private MicProcessor NewMicProcessor() =>
+        new((float)(MicGainSlider.Value / 100.0), DenoiseCheck.IsChecked == true, DenoiseLevelIndex());
+
+    private void UpdateAudioUi()
+    {
+        bool sys = SysAudioCheck.IsChecked == true, mic = MicCheck.IsChecked == true;
+        SysOptions.Visibility = sys ? Visibility.Visible : Visibility.Collapsed;
+        MicOptions.Visibility = mic ? Visibility.Visible : Visibility.Collapsed;
+        SyncPanel.Visibility = (sys || mic) ? Visibility.Visible : Visibility.Collapsed;
+        DenoiseOptions.IsEnabled = DenoiseCheck.IsChecked == true;
+    }
+
+    private void AudioOption_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateAudioUi();
+        if (MicCheck.IsChecked == true) { if (MicList.Items.Count == 0) LoadMics(); }
+        else StopMicTest();
+        if (_testSrc != null) _testProc = NewMicProcessor();
+    }
+
+    private void DenoiseLevel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_testSrc != null) _testProc = NewMicProcessor();
+    }
+
+    private void RefreshMicsButton_Click(object sender, RoutedEventArgs e) => LoadMics();
+
+    private void MicList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_testSrc != null) StartMicTest(); // reinicia o teste com o novo microfone
+    }
+
+    private void LoadMics()
+    {
+        try
+        {
+            var keep = SelectedMic?.Id ?? _cfg.MicDeviceId;
+            var list = AudioDevices.ListMics();
+            MicList.ItemsSource = list;
+            MicList.SelectedItem = list.FirstOrDefault(m => m.Id == keep) ?? list.FirstOrDefault(m => m.IsDefault) ?? list.FirstOrDefault();
+            MicTestHint.Text = list.Count == 0
+                ? "Nenhum microfone foi encontrado. Conecte um e clique em \"Detectar microfones\"."
+                : $"{list.Count} microfone(s) detectado(s). Clique em \"Testar microfone\" e fale: a barra deve se mexer.";
+        }
+        catch (Exception ex)
+        {
+            MicTestHint.Text = "Não foi possível listar os microfones: " + ex.Message;
+        }
+    }
+
+    private void MicTestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_testSrc != null) StopMicTest(); else StartMicTest();
+    }
+
+    private void StartMicTest()
+    {
+        var mic = SelectedMic;
+        if (mic == null) { MicTestHint.Text = "Selecione um microfone na lista."; return; }
+        StopMicTest();
+        try
+        {
+            using var en = new MMDeviceEnumerator();
+            var cap = new WasapiCapture(en.GetDevice(mic.Id));
+            _testSrc = new CaptureSource(cap);
+            _testSrc.Start();
+            _testProc = NewMicProcessor();
+            _meterLevel = 0; _silentTicks = 0;
+            _meterTimer.Start();
+            MicTestButton.Content = "Parar teste";
+            MicTestHint.Text = "Fale normalmente. Ajuste a captação até a barra chegar perto do fim nas falas mais altas, sem encostar no limite.";
+        }
+        catch (Exception ex)
+        {
+            StopMicTest();
+            MicTestHint.Text = "Não foi possível abrir o microfone: " + ex.Message +
+                " Verifique Configurações do Windows → Privacidade → Microfone.";
+        }
+    }
+
+    private void StopMicTest()
+    {
+        _meterTimer.Stop();
+        if (_testSrc != null) { _testSrc.Stop(); _testSrc.Dispose(); _testSrc = null; }
+        _testProc = null;
+        MicMeter.Value = 0;
+        MicTestButton.Content = "Testar microfone";
+    }
+
+    private void MeterTick(object? sender, EventArgs e)
+    {
+        if (_testSrc == null || _testProc == null) return;
+        int n = _testSrc.Read(_meterBuf, _meterBuf.Length) & ~1;
+        float peak = 0;
+        if (n > 0) { _testProc.Process(_meterBuf, n); peak = AudioMath.Peak(_meterBuf, n); }
+        _silentTicks = peak < 0.0005f ? _silentTicks + 1 : 0;
+        _meterLevel = Math.Max(Math.Sqrt(Math.Min(1f, peak)), _meterLevel * 0.85);
+        MicMeter.Value = Math.Min(1.0, _meterLevel);
+        if (_silentTicks == 100)
+            MicTestHint.Text = "Nenhum som detectado. Confira se é o microfone certo e se o Windows permite que aplicativos de desktop usem o microfone (Configurações → Privacidade → Microfone).";
     }
 
     // ------------------------------------------------------------------ efeito de clique

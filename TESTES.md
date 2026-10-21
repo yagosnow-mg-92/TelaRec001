@@ -37,3 +37,14 @@ Marque conforme for validando. Para cada item anote Windows, GPU e resultado.
 | 27 | Efeito de clique em monitor secundário, com escala de DPI ≠ 100% e com coordenadas negativas: círculo no lugar certo | ☐ |
 | 28 | Sons diferentes para esquerdo/direito; sem efeito durante pausa; clique em outro monitor não gera efeito | ☐ |
 | 29 | Efeito de clique desligado: nenhum hook/janela extra; mouse sem atraso perceptível com o efeito ligado | ☐ |
+| 30 | Som do computador: gravar vídeo do YouTube; o MP4 tem áudio audível e sem estalos | ☐ |
+| 31 | Som do computador em silêncio por um tempo e depois voltando: áudio continua sincronizado até o fim (vídeo de 10+ min) | ☐ |
+| 32 | Microfone: lista mostra todos os microfones; troca de microfone funciona; "Detectar microfones" vê um USB recém-conectado | ☐ |
+| 33 | Teste do microfone: barra reage à voz; captação 0–300% muda o nível; aviso aparece se sem sinal | ☐ |
+| 34 | Gravar som do PC + microfone juntos: as duas vozes aparecem no mesmo vídeo, sem eco/duplicação | ☐ |
+| 35 | Redução de ruído (Leve/Média/Forte): chiado cai nas pausas e a voz não é cortada | ☐ |
+| 36 | Sincronia áudio/imagem (bater palma/clicar com som): diferença < ~100 ms; se não, calibrar "Ajuste de sincronia" | ☐ |
+| 37 | Pausar/retomar com áudio: sem áudio durante a pausa, sincronia mantida após retomar | ☐ |
+| 38 | Microfone bloqueado nas permissões do Windows: aviso claro e gravação segue sem o microfone | ☐ |
+| 39 | Trocar dispositivo de saída/fones durante a gravação (comportamento documentado) | ☐ |
+| 40 | Finalizar com áudio: MP4 fecha corretamente (exit 0), abre em VLC, Windows Media Player e navegador | ☐ |

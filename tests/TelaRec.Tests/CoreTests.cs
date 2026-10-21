@@ -125,3 +125,105 @@ public class HelpersTests : IDisposable
         Assert.False(a.SameGeometryAs(a with { Width = 1280 }));
     }
 }
+
+public class AudioTests
+{
+    private static MonitorInfo Mon(int a = 0, int o = 0) => new(1, "D1", 0, 0, 1920, 1080, true, 100, a, o);
+
+    [Fact]
+    public void Args_WithoutAudio_HaveNoAudioInput()
+    {
+        var a = FfmpegArgs.BuildCapture(Mon(), CaptureMode.Dxgi, 30, VideoQuality.Balanced, VideoEncoder.Cpu, "a.mp4");
+        Assert.DoesNotContain("pipe:0", a);
+        Assert.DoesNotContain("aac", a);
+    }
+
+    [Theory]
+    [InlineData(CaptureMode.Dxgi)]
+    [InlineData(CaptureMode.Gdi)]
+    public void Args_WithAudio_ReadPcmFromPipeAndEncodeAac(CaptureMode mode)
+    {
+        var a = FfmpegArgs.BuildCapture(Mon(), mode, 30, VideoQuality.Balanced, VideoEncoder.Cpu, "a.mp4", audio: true);
+        Assert.Contains("-f s16le -ar 48000 -ac 2", a);
+        Assert.Contains("-i pipe:0", a);
+        Assert.Contains("-c:a aac", a);
+        Assert.Contains("-shortest", a);
+        Assert.Contains("-map", a);
+    }
+
+    [Fact]
+    public void ToPcm16_ClampsAndIsLittleEndian()
+    {
+        var dst = new byte[6];
+        AudioMath.ToPcm16(new[] { 0f, 5f, -5f }, 3, dst);
+        Assert.Equal(0, BitConverter.ToInt16(dst, 0));
+        Assert.InRange(BitConverter.ToInt16(dst, 2), 32000, 32767);
+        Assert.InRange(BitConverter.ToInt16(dst, 4), -32767, -32000);
+    }
+
+    [Fact]
+    public void Mix_SumsSources()
+    {
+        var d = new[] { 0.1f, 0.2f }; AudioMath.MixInto(d, new[] { 0.3f, 0.1f }, 2);
+        Assert.Equal(0.4f, d[0], 3); Assert.Equal(0.3f, d[1], 3);
+    }
+
+    private static float Rms(float[] b) { double s = 0; foreach (var v in b) s += v * v; return (float)Math.Sqrt(s / b.Length); }
+
+    [Fact]
+    public void Gate_AttenuatesLowNoise()
+    {
+        var gate = new MicProcessor(1f, true, 1);
+        var rnd = new Random(1);
+        float inRms = 0, outRms = 0;
+        for (int k = 0; k < 100; k++)
+        {
+            var b = new float[1920];
+            for (int i = 0; i < b.Length; i++) b[i] = (float)(rnd.NextDouble() * 2 - 1) * 0.003f;
+            inRms = Rms(b); gate.Process(b, b.Length); outRms = Rms(b);
+        }
+        Assert.True(outRms < inRms * 0.5f);
+    }
+
+    [Fact]
+    public void Gate_PassesLoudSpeechLikeSignal()
+    {
+        var gate = new MicProcessor(1f, true, 2);
+        float inRms = 0, outRms = 0;
+        for (int k = 0; k < 30; k++)
+        {
+            var b = new float[1920];
+            for (int f = 0; f < 960; f++)
+            {
+                float v = 0.3f * MathF.Sin(2 * MathF.PI * 440 * (k * 960 + f) / 48000f);
+                b[2 * f] = v; b[2 * f + 1] = v;
+            }
+            inRms = Rms(b); gate.Process(b, b.Length); outRms = Rms(b);
+        }
+        Assert.True(outRms > inRms * 0.9f);
+    }
+
+    [Fact]
+    public void Gain_IsApplied_WithoutDenoise()
+    {
+        var p = new MicProcessor(2f, false, 1);
+        var b = new[] { 0.1f, 0.1f };
+        p.Process(b, 2);
+        Assert.Equal(0.2f, b[0], 3);
+    }
+
+    [Fact]
+    public void Settings_AudioRoundTrip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "telarec-audio-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            new AppSettings { RecordSystemAudio = true, RecordMic = true, MicDeviceId = "id1", MicGainPct = 150, Denoise = true, DenoiseLevel = 2, AudioSyncDelayMs = 600 }.Save(path);
+            var s = AppSettings.Load(path);
+            Assert.True(s.RecordSystemAudio); Assert.True(s.RecordMic);
+            Assert.Equal("id1", s.MicDeviceId); Assert.Equal(150, s.MicGainPct);
+            Assert.True(s.Denoise); Assert.Equal(2, s.DenoiseLevel); Assert.Equal(600, s.AudioSyncDelayMs);
+        }
+        finally { try { File.Delete(path); } catch { } }
+    }
+}

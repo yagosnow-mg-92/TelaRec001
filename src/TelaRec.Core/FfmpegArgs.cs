@@ -28,20 +28,27 @@ public static class FfmpegArgs
         };
     }
 
-    public static string BuildCapture(MonitorInfo m, CaptureMode mode, int fps, VideoQuality q, VideoEncoder e, string output)
+    /// <param name="audio">Se verdadeiro, lê PCM s16le 48 kHz estéreo da entrada padrão (pipe) e codifica em AAC.</param>
+    public static string BuildCapture(MonitorInfo m, CaptureMode mode, int fps, VideoQuality q, VideoEncoder e,
+        string output, bool audio = false)
     {
-        string common = $"{EncoderArgs(e, q)} -g {fps * 2} {ColorTags} -fps_mode cfr -r {fps} {FragFlags} -f mp4 {Quote(output)}";
+        string audioIn = audio ? "-thread_queue_size 512 -f s16le -ar 48000 -ac 2 -i pipe:0 " : "";
+        string audioOut = audio ? "-c:a aac -b:a 160k -ar 48000 -ac 2 -shortest " : "";
+        string common = $"{EncoderArgs(e, q)} -g {fps * 2} {ColorTags} -fps_mode cfr -r {fps} {audioOut}{FragFlags} -f mp4 {Quote(output)}";
 
         if (mode == CaptureMode.Dxgi)
         {
             if (m.AdapterIndex < 0 || m.OutputIndex < 0)
                 throw new InvalidOperationException("Monitor sem mapeamento DXGI.");
-            return $"-hide_banner -loglevel error -y -init_hw_device d3d11va=hw:{m.AdapterIndex} -filter_hw_device hw " +
-                   $"-filter_complex \"ddagrab=output_idx={m.OutputIndex}:framerate={fps}:draw_mouse=1,hwdownload,format=bgra,{Tail}\" {common}";
+            string label = audio ? "[v]" : "";
+            string maps = audio ? "-map \"[v]\" -map 0:a " : "";
+            return $"-hide_banner -loglevel error -y {audioIn}-init_hw_device d3d11va=hw:{m.AdapterIndex} -filter_hw_device hw " +
+                   $"-filter_complex \"ddagrab=output_idx={m.OutputIndex}:framerate={fps}:draw_mouse=1,hwdownload,format=bgra,{Tail}{label}\" {maps}{common}";
         }
 
+        string gmaps = audio ? "-map 0:v -map 1:a " : "";
         return $"-hide_banner -loglevel error -y -f gdigrab -framerate {fps} -offset_x {m.X} -offset_y {m.Y} " +
-               $"-video_size {m.Width}x{m.Height} -draw_mouse 1 -i desktop -vf \"{Tail}\" {common}";
+               $"-video_size {m.Width}x{m.Height} -draw_mouse 1 -i desktop {audioIn}-vf \"{Tail}\" {gmaps}{common}";
     }
 
     public static string BuildRemux(string input, string output) =>

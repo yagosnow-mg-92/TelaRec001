@@ -22,6 +22,21 @@ O executável tem ~60–80 MB porque embute o .NET e o FFmpeg. Na primeira execu
 3. Escolha pasta, nome (opcional), FPS e qualidade.
 4. **Iniciar gravação** → **Pausar/Retomar** → **Finalizar**. O tempo em pausa não entra no vídeo.
 
+## Áudio (opcional)
+
+Em **Áudio**, duas opções independentes (ambas vêm desligadas):
+
+- **Gravar o som do computador** — captura a saída de áudio (tudo que toca nas caixas/fones: vídeos, reuniões…) via WASAPI loopback, com controle de volume.
+- **Gravar o microfone** — ao marcar, o programa **detecta todos os microfones** e mostra uma lista para escolher (botão *Detectar microfones* atualiza). Há **teste com barra de nível ao vivo**, controle de **captação (0–300%)** e **Reduzir ruído** (Leve/Média/Forte).
+
+As duas fontes são mixadas em uma só faixa AAC (160 kbps, 48 kHz estéreo). Com o som do computador ligado, o som do clique do "efeito de clique" também entra no vídeo.
+
+**Redução de ruído:** é um filtro de graves + *porta de ruído adaptativa* — mede o ruído de fundo e o atenua quando você não está falando. Não remove ruído *enquanto* você fala (isso exigiria um modelo de IA, fora do escopo da v1).
+
+**Sincronia:** o áudio é enviado ao FFmpeg em tempo real, com um atraso inicial configurável (padrão 450 ms) para casar com a imagem. Se o som sair adiantado ou atrasado na sua máquina, ajuste **Ajuste de sincronia do áudio (ms)** na seção Áudio. Esse valor ainda precisa ser calibrado em hardware real.
+
+**Permissão do microfone:** se a barra de teste não mexer, confira *Configurações do Windows → Privacidade e segurança → Microfone* e permita que **aplicativos de desktop** usem o microfone.
+
 ## Efeito de clique (opcional)
 
 Em **Configurações → Efeito de clique do mouse** (botão **?** explica as cores):
@@ -42,6 +57,7 @@ Funciona só no monitor gravado e não aparece durante a pausa. O círculo é de
 | Mapeamento de monitor | Win32 `EnumDisplayMonitors` + DXGI `EnumAdapters1/EnumOutputs` | Liga o "Monitor N" do Windows ao par (adaptador, saída) usado pelo capturador. |
 | Plano B | `gdigrab` (GDI) por coordenadas | Usado só se o DXGI falhar **e** todos os monitores estiverem em escala 100% (senão o recorte poderia errar). |
 | Codificação | H.264: NVENC / Quick Sync / AMF (testados na inicialização) com fallback x264 | Compatibilidade máxima; hardware quando confiável. |
+| Áudio | NAudio (WASAPI) → mixer próprio → PCM no stdin do FFmpeg → AAC | Loopback + microfone em tempo real, com silêncio injetado quando nada toca (o loopback não envia dados em silêncio). |
 | Container | MP4 fragmentado por trecho → união sem recodificar + `faststart` | Arquivo sobrevive a quedas; pausa = novo trecho; sem manter vídeo em RAM. |
 | Cor | BT.709, faixa limitada, sem escalonar | Cores corretas e texto nítido; só corta 1 px se a dimensão for ímpar (exigência do H.264). |
 | Distribuição | `dotnet publish` single-file + FFmpeg embutido (gzip) | Um único `.exe`. |
@@ -70,7 +86,8 @@ tests/TelaRec.Tests  testes unitários (xunit)
 
 - **Nunca testado em Windows real** (ver aviso no topo). O mapeamento monitor→DXGI, a opção "esconder esta janela da gravação" (`WDA_EXCLUDEFROMCAPTURE`) e telas giradas precisam de validação manual.
 - Monitores girados (retrato) com `ddagrab`: comportamento não verificado.
-- Sem áudio, webcam, edição, atalhos globais nem ícone de bandeja (fora do escopo da v1).
+- Sem webcam, edição, atalhos globais nem ícone de bandeja.
+- Áudio: só a saída **padrão** do Windows é capturada (se você trocar o dispositivo de saída durante a gravação, o novo não é seguido); a sincronia áudio/vídeo é estimada (ver acima).
 - Requer GPU/driver com Desktop Duplication (praticamente todo PC físico). Em máquinas virtuais/Área de Trabalho Remota pode cair no modo GDI.
 - Windows 10 2004+ recomendado (para ocultar a janela do app da gravação).
 

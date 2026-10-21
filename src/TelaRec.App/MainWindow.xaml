@@ -117,15 +117,85 @@
                                                 </TextBlock>
                                             </StackPanel>
                                             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12"
-                                                       Text="• Só aparece no monitor que está sendo gravado.&#10;• O som é apenas um aviso para você: o vídeo não grava áudio.&#10;• Cliques feitos durante a pausa não aparecem."/>
+                                                       Text="• Só aparece no monitor que está sendo gravado.&#10;• O som do clique só entra no vídeo se "Gravar o som do computador" estiver ligado.&#10;• Cliques feitos durante a pausa não aparecem."/>
                                         </StackPanel>
                                     </Border>
                                 </Popup>
                             </StackPanel>
-                            <CheckBox x:Name="ClickSoundCheck" Content="Tocar som ao clicar (somente para você ouvir)" Foreground="{StaticResource Text}" Margin="24,0,0,6"/>
+                            <CheckBox x:Name="ClickSoundCheck" Content="Tocar som ao clicar" Foreground="{StaticResource Text}" Margin="24,0,0,6"/>
                             <TextBlock x:Name="EncoderInfo" Foreground="{StaticResource Muted}" FontSize="12" Text=""/>
                         </StackPanel>
                     </Grid>
+                </Border>
+
+                <TextBlock Text="ÁUDIO" Foreground="{StaticResource Muted}" FontSize="12" FontWeight="SemiBold" Margin="2,20,0,8"/>
+                <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                        CornerRadius="14" Padding="16">
+                    <StackPanel x:Name="AudioPanel">
+
+                        <CheckBox x:Name="SysAudioCheck" Click="AudioOption_Click" Foreground="{StaticResource Text}"
+                                  Content="Gravar o som do computador (saída de áudio)"/>
+                        <TextBlock Text="Grava tudo o que toca nas caixas ou fones: vídeos, reuniões, músicas…"
+                                   Foreground="{StaticResource Muted}" FontSize="12" Margin="24,2,0,8" TextWrapping="Wrap"/>
+                        <StackPanel x:Name="SysOptions" Orientation="Horizontal" Margin="24,0,0,6" Visibility="Collapsed">
+                            <TextBlock Text="Volume" VerticalAlignment="Center" Width="70"/>
+                            <Slider x:Name="SysGainSlider" Minimum="0" Maximum="200" Value="100" Width="220" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="SysGainText" Text="100%" Width="50" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <Rectangle Height="1" Fill="{StaticResource Border}" Margin="0,10,0,12"/>
+
+                        <CheckBox x:Name="MicCheck" Click="AudioOption_Click" Foreground="{StaticResource Text}"
+                                  Content="Gravar o microfone"/>
+                        <StackPanel x:Name="MicOptions" Margin="24,8,0,0" Visibility="Collapsed">
+                            <Grid Margin="0,0,0,6">
+                                <TextBlock Text="Escolha o microfone" VerticalAlignment="Center"/>
+                                <Button x:Name="RefreshMicsButton" Content="Detectar microfones" Style="{StaticResource GhostBtn}"
+                                        Height="30" MinWidth="150" FontSize="12" HorizontalAlignment="Right" Margin="0"
+                                        Click="RefreshMicsButton_Click"/>
+                            </Grid>
+                            <ListBox x:Name="MicList" Height="96" DisplayMemberPath="Label" ItemContainerStyle="{StaticResource MicItem}"
+                                     Background="{StaticResource Surface2}" BorderBrush="{StaticResource Border}"
+                                     Foreground="{StaticResource Text}" SelectionChanged="MicList_SelectionChanged"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <TextBlock Text="Captação" VerticalAlignment="Center" Width="70"/>
+                                <Slider x:Name="MicGainSlider" Minimum="0" Maximum="300" Value="100" Width="220" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="MicGainText" Text="100%" Width="50" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Button x:Name="MicTestButton" Content="Testar microfone" Style="{StaticResource GhostBtn}"
+                                        Height="32" MinWidth="150" FontSize="13" Margin="0,0,12,0" Click="MicTestButton_Click"/>
+                                <ProgressBar Grid.Column="1" x:Name="MicMeter" Minimum="0" Maximum="1" Height="12" VerticalAlignment="Center"
+                                             Foreground="{StaticResource Green}" Background="{StaticResource Surface2}"
+                                             BorderBrush="{StaticResource Border}"/>
+                            </Grid>
+                            <TextBlock x:Name="MicTestHint" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="Clique em &quot;Testar microfone&quot; e fale: a barra deve se mexer."/>
+
+                            <CheckBox x:Name="DenoiseCheck" Click="AudioOption_Click" Foreground="{StaticResource Text}" Margin="0,14,0,0"
+                                      Content="Reduzir ruído do microfone"/>
+                            <StackPanel x:Name="DenoiseOptions" Orientation="Horizontal" Margin="24,8,0,0" IsEnabled="False">
+                                <RadioButton x:Name="DnLow" GroupName="dn" Content="Leve" Style="{StaticResource PillRadio}" Click="DenoiseLevel_Click"/>
+                                <RadioButton x:Name="DnMed" GroupName="dn" Content="Média" Style="{StaticResource PillRadio}" Click="DenoiseLevel_Click"/>
+                                <RadioButton x:Name="DnHigh" GroupName="dn" Content="Forte" Style="{StaticResource PillRadio}" Click="DenoiseLevel_Click"/>
+                            </StackPanel>
+                            <TextBlock Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="24,6,0,0"
+                                       Text="Corta o chiado e o ruído de fundo nos momentos em que você não está falando. Não remove ruído enquanto você fala. Use o teste acima para ouvir/ver o efeito."/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="SyncPanel" Margin="0,14,0,0" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Ajuste de sincronia do áudio (ms)" VerticalAlignment="Center"/>
+                                <TextBox x:Name="SyncBox" Width="70" Margin="12,0,0,0" Background="{StaticResource Surface2}"
+                                         Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="6,4"/>
+                            </StackPanel>
+                            <TextBlock Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="Se o som sair ADIANTADO em relação à imagem, aumente o valor; se sair ATRASADO, diminua (0 a 3000). Padrão: 450."/>
+                        </StackPanel>
+                    </StackPanel>
                 </Border>
 
                 <Border x:Name="MessageBorder" Visibility="Collapsed" Margin="0,18,0,0" CornerRadius="12" Padding="14"

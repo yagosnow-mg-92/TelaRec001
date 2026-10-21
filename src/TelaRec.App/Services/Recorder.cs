@@ -36,6 +36,8 @@ public sealed class Recorder : IDisposable
     private VideoEncoder _enc;
     private string _finalPath = "";
     private string _tempDir = "";
+    private AudioOptions _audioOpt = AudioOptions.None;
+    private AudioPipeline? _audio;
     private volatile bool _startingUp;
     private volatile bool _stoppingExpected;
 
@@ -54,12 +56,13 @@ public sealed class Recorder : IDisposable
 
     // ---------------------------------------------------------------- início
     public async Task<string?> StartAsync(MonitorInfo monitor, bool allowGdi, int fps, VideoQuality quality,
-        VideoEncoder requested, string finalPath)
+        VideoEncoder requested, string finalPath, AudioOptions? audio = null)
     {
         if (State is RecState.Recording or RecState.Paused or RecState.Finalizing)
             return "Já existe uma gravação em andamento.";
 
         _monitor = monitor; _fps = fps; _quality = quality; _finalPath = finalPath;
+        _audioOpt = audio ?? AudioOptions.None;
 
         try
         {
@@ -118,16 +121,24 @@ public sealed class Recorder : IDisposable
         var log = new StringBuilder();
         _log = log;
         Process p;
-        try { p = Launch(FfmpegArgs.BuildCapture(_monitor!, mode, _fps, _quality, enc, seg), log); }
+        try { p = Launch(FfmpegArgs.BuildCapture(_monitor!, mode, _fps, _quality, enc, seg, _audioOpt.Any), log); }
         catch (Exception ex) { return "não foi possível iniciar o motor de vídeo (" + ex.Message + ")"; }
 
         _startingUp = true; _proc = p; _sw.Restart();
+        if (_audioOpt.Any)
+        {
+            _audio = new AudioPipeline(_audioOpt);
+            _audio.Start(p.StandardInput.BaseStream);
+            foreach (var w in _audio.Warnings) Warning?.Invoke(w);
+        }
         await Task.Delay(1500);
         _startingUp = false;
 
         if (p.HasExited)
         {
             _sw.Reset(); _proc = null;
+            try { _audio?.Dispose(); } catch { }
+            _audio = null;
             var tail = LastLines(log);
             try { p.Dispose(); } catch { }
             try { if (File.Exists(seg)) File.Delete(seg); } catch { }
@@ -217,16 +228,27 @@ public sealed class Recorder : IDisposable
         _stoppingExpected = true;
         try
         {
-            try
+            if (_audio != null)
             {
-                if (!p.HasExited)
-                {
-                    await p.StandardInput.WriteAsync("q");
-                    await p.StandardInput.FlushAsync();
-                    p.StandardInput.Close();
-                }
+                // Com áudio, o stdin carrega o PCM: ao parar o mixer e fechar o pipe, o FFmpeg encerra
+                // (-shortest) e finaliza o MP4 normalmente.
+                var a = _audio; _audio = null;
+                await Task.Run(() => a.Stop());
+                try { p.StandardInput.Close(); } catch { }
             }
-            catch { /* processo já encerrou */ }
+            else
+            {
+                try
+                {
+                    if (!p.HasExited)
+                    {
+                        await p.StandardInput.WriteAsync("q");
+                        await p.StandardInput.FlushAsync();
+                        p.StandardInput.Close();
+                    }
+                }
+                catch { /* processo já encerrou */ }
+            }
 
             bool exited = await Task.Run(() => p.WaitForExit(30000));
             if (!exited)

@@ -62,6 +62,14 @@ public sealed class AppSettings
     public bool HideWindowFromCapture { get; set; } = true;
     public bool ClickEffect { get; set; } = false;
     public bool ClickSound { get; set; } = true;
+    public bool RecordSystemAudio { get; set; } = false;
+    public bool RecordMic { get; set; } = false;
+    public string? MicDeviceId { get; set; }
+    public int SystemGainPct { get; set; } = 100;
+    public int MicGainPct { get; set; } = 100;
+    public bool Denoise { get; set; } = false;
+    public int DenoiseLevel { get; set; } = 1;
+    public int AudioSyncDelayMs { get; set; } = 450;
 
     public static AppSettings Load(string path)
     {
