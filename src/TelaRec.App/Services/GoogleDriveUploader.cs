@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,11 +33,16 @@ internal sealed class GoogleDriveUploader
         });
 
         // A consulta também valida acesso e se a URL aponta para uma pasta.
-        var folder = await drive.Files.Get(folderId).SetFields("mimeType").SetSupportsAllDrives(true).ExecuteAsync(cancellationToken);
+        var folderRequest = drive.Files.Get(folderId);
+        folderRequest.Fields = "mimeType";
+        folderRequest.SupportsAllDrives = true;
+        var folder = await folderRequest.ExecuteAsync(cancellationToken);
         if (folder.MimeType != "application/vnd.google-apps.folder")
             throw new InvalidOperationException("O link informado não aponta para uma pasta do Google Drive.");
 
-        var account = await drive.About.Get().SetFields("user(emailAddress)").ExecuteAsync(cancellationToken);
+        var aboutRequest = drive.About.Get();
+        aboutRequest.Fields = "user(emailAddress)";
+        var account = await aboutRequest.ExecuteAsync(cancellationToken);
         var metadata = new Google.Apis.Drive.v3.Data.File
         {
             Name = Path.GetFileName(videoPath),
@@ -64,11 +70,15 @@ internal sealed class GoogleDriveUploader
     {
         var credential = await AuthorizeAsync(clientId, clientSecret, cancellationToken);
         var drive = new DriveService(new BaseClientService.Initializer { HttpClientInitializer = credential, ApplicationName = "TelaRec" });
-        var folder = await drive.Files.Get(ParseFolderId(folderUrl)).SetFields("mimeType,capabilities(canAddChildren)")
-            .SetSupportsAllDrives(true).ExecuteAsync(cancellationToken);
+        var folderRequest = drive.Files.Get(ParseFolderId(folderUrl));
+        folderRequest.Fields = "mimeType,capabilities(canAddChildren)";
+        folderRequest.SupportsAllDrives = true;
+        var folder = await folderRequest.ExecuteAsync(cancellationToken);
         if (folder.MimeType != "application/vnd.google-apps.folder") throw new InvalidOperationException("O link informado não aponta para uma pasta do Google Drive.");
         if (folder.Capabilities?.CanAddChildren != true) throw new InvalidOperationException("A conta selecionada pode acessar a pasta, mas não tem permissão para adicionar arquivos nela.");
-        var account = await drive.About.Get().SetFields("user(emailAddress)").ExecuteAsync(cancellationToken);
+        var aboutRequest = drive.About.Get();
+        aboutRequest.Fields = "user(emailAddress)";
+        var account = await aboutRequest.ExecuteAsync(cancellationToken);
         return account.User?.EmailAddress ?? "Conta Google autorizada";
     }
 
