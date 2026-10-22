@@ -88,7 +88,6 @@ internal sealed class GoogleDriveUploader
         {
             ClientSecrets = new ClientSecrets { ClientId = clientId, ClientSecret = clientSecret },
             Scopes = Scopes,
-            AccessType = "offline",
             Prompt = "select_account"
         };
         return await GoogleWebAuthorizationBroker.AuthorizeAsync(initializer, Scopes, "user", ct,
