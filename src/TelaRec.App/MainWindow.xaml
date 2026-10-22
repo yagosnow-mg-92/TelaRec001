@@ -54,7 +54,7 @@
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Text="Pasta de destino" VerticalAlignment="Center" Margin="0,0,0,12"/>
@@ -124,6 +124,29 @@
                             </StackPanel>
                             <CheckBox x:Name="ClickSoundCheck" Content="Tocar som ao clicar" Foreground="{StaticResource Text}" Margin="24,0,0,6"/>
                             <TextBlock x:Name="EncoderInfo" Foreground="{StaticResource Muted}" FontSize="12" Text=""/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="5" Text="Google Drive" VerticalAlignment="Top" Margin="0,14,0,0"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,14,0,0">
+                            <TextBox x:Name="DriveFolderBox" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
+                                     ToolTip="Cole o link da pasta do Google Drive onde os vídeos serão enviados"/>
+                            <TextBox x:Name="GoogleClientIdBox" Margin="0,7,0,0" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
+                                     ToolTip="ID do cliente OAuth do tipo Aplicativo para computador, criado no Google Cloud Console"/>
+                            <TextBox x:Name="GoogleClientSecretBox" Margin="0,7,0,0" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
+                                     ToolTip="Client secret do cliente OAuth para computador; o Google não o considera um segredo confidencial para apps instalados"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="DriveConnectButton" Content="Conectar e testar pasta" Style="{StaticResource GhostBtn}"
+                                        Height="34" MinWidth="190" FontSize="13" Margin="0,0,10,0" Click="DriveConnectButton_Click"/>
+                                <Button x:Name="DriveSwitchAccountButton" Content="Trocar conta" Style="{StaticResource GhostBtn}"
+                                        Height="34" MinWidth="110" FontSize="13" Margin="0,0,10,0" Click="DriveSwitchAccountButton_Click"/>
+                                <TextBlock x:Name="DriveAccountText" Foreground="{StaticResource Muted}" VerticalAlignment="Center"
+                                           Text="Drive não conectado" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <TextBlock Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="Informe o link da pasta, Client ID e Client secret de um cliente OAuth do tipo Aplicativo para computador. O TelaRec pedirá autorização pelo navegador e manterá a sessão protegida nesta conta do Windows. Após cada gravação, você poderá escolher se envia o MP4."/>
                         </StackPanel>
                     </Grid>
                 </Border>

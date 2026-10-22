@@ -71,6 +71,10 @@ public sealed class AppSettings
     public int DenoiseLevel { get; set; } = 1;
     /// <summary>Ajuste fino da sincronia (ms). Positivo = áudio mais tarde; negativo = áudio mais cedo.</summary>
     public int AudioSyncAdjustMs { get; set; } = 0;
+    public string DriveFolderUrl { get; set; } = "";
+    public string GoogleOAuthClientId { get; set; } = "";
+    public string GoogleOAuthClientSecret { get; set; } = "";
+    public string GoogleAccountEmail { get; set; } = "";
 
     public static AppSettings Load(string path)
     {

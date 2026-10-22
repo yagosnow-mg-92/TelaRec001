@@ -22,6 +22,14 @@ O executável tem ~60–80 MB porque embute o .NET e o FFmpeg. Na primeira execu
 3. Escolha pasta, nome (opcional), FPS e qualidade.
 4. **Iniciar gravação** → **Pausar/Retomar** → **Finalizar**. O tempo em pausa não entra no vídeo.
 
+### Enviar gravações ao Google Drive
+
+Na seção **Google Drive**, informe o link da pasta de destino, o Client ID e o Client secret de uma credencial OAuth do tipo **Aplicativo para computador**. Clique em **Conectar e testar pasta**; o navegador permite escolher a conta Google e o TelaRec confirma se ela pode adicionar arquivos à pasta. Use **Trocar conta** para remover a autorização local e selecionar outra conta. Após uma gravação concluída, o app pergunta se deseja enviar o MP4 original; o progresso e o link para copiar aparecem numa janela própria.
+
+O app usa a Drive API com upload retomável para enviar o MP4 sem recomprimir. O link do arquivo respeita as permissões herdadas da pasta: integrantes do grupo só conseguem abrir se o Google Drive já lhes conceder acesso. O TelaRec não altera as permissões da pasta ou do vídeo. Tokens OAuth são protegidos pelo DPAPI do Windows e vinculados ao usuário Windows atual.
+
+**Configuração única do Google Cloud:** crie um projeto, habilite a Google Drive API, configure a tela de consentimento OAuth como interna quando o uso for restrito à organização (conforme a política do Workspace), crie um OAuth Client ID de aplicativo para computador e use os dados mostrados no formulário do TelaRec. O aplicativo solicita o escopo completo do Drive para validar uma pasta existente colada por link e gravar nela; políticas do Workspace ou do Google podem exigir aprovação administrativa ou verificação OAuth antes do primeiro uso.
+
 ## Áudio (opcional)
 
 Em **Áudio**, duas opções independentes (ambas vêm desligadas):

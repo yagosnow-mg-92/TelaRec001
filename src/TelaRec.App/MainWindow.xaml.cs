@@ -50,6 +50,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _cfg = AppSettings.Load(_settingsPath);
+        DriveFolderBox.Text = _cfg.DriveFolderUrl;
+        GoogleClientIdBox.Text = _cfg.GoogleOAuthClientId;
+        GoogleClientSecretBox.Text = _cfg.GoogleOAuthClientSecret;
+        DriveAccountText.Text = string.IsNullOrWhiteSpace(_cfg.GoogleAccountEmail) ? "Drive não conectado" : "Conectado: " + _cfg.GoogleAccountEmail;
 
         FolderBox.Text = _cfg.OutputFolder;
         NameBox.Text = _cfg.FileName;
@@ -160,7 +164,7 @@ public partial class MainWindow : Window
         if (_rec == null) return;
         var r = await _rec.FinishAsync(
             "O monitor selecionado foi desconectado ou teve a configuração alterada; a gravação foi finalizada com segurança.");
-        ShowResult(r);
+        await ShowResultAsync(r);
     }
 
     /// <summary>Atualiza as miniaturas ~1x por segundo para mostrar o conteúdo ao vivo de cada tela.</summary>
@@ -276,6 +280,9 @@ public partial class MainWindow : Window
         _cfg.DenoiseLevel = DenoiseLevelIndex();
         if (SelectedMic != null) _cfg.MicDeviceId = SelectedMic.Id;
         _cfg.AudioSyncAdjustMs = int.TryParse(SyncBox.Text.Trim(), out var sd) ? Math.Clamp(sd, -2000, 2000) : 0;
+        _cfg.DriveFolderUrl = DriveFolderBox.Text.Trim();
+        _cfg.GoogleOAuthClientId = GoogleClientIdBox.Text.Trim();
+        _cfg.GoogleOAuthClientSecret = GoogleClientSecretBox.Text.Trim();
         return _cfg;
     }
 
@@ -377,7 +384,7 @@ public partial class MainWindow : Window
         {
             ShowInfo("Finalizando e salvando o vídeo… não feche o programa.");
             var r = await _rec.FinishAsync();
-            ShowResult(r);
+            await ShowResultAsync(r);
         }
         finally { _busy = false; if (_closeAfter) { _closing = true; Close(); } }
     }
@@ -398,7 +405,7 @@ public partial class MainWindow : Window
         if (free < 1024L * 1024 * 1024)
         {
             var r = await _rec.FinishAsync("O espaço em disco está acabando; a gravação foi finalizada para proteger o arquivo.");
-            ShowResult(r);
+            await ShowResultAsync(r);
         }
         else if (free < 3L * 1024 * 1024 * 1024 && !_warnedDisk)
         {
@@ -633,13 +640,70 @@ public partial class MainWindow : Window
         if (!MessageText.Text.StartsWith("Aviso")) HideMessage();
     }
 
-    private void ShowResult(RecordingResult r)
+    private void ShowResult(RecordingResult r) => _ = ShowResultAsync(r);
+
+    private async Task ShowResultAsync(RecordingResult r)
     {
         if (r.Ignored) return;
         _lastFile = r.FilePath;
         _folderToOpen = r.FilePath != null ? System.IO.Path.GetDirectoryName(r.FilePath) : r.KeptFolder;
         SetMessage(r.Message, (Brush)FindResource(r.Success ? "Green" : "Red"), _folderToOpen != null);
         PlayButton.Visibility = _lastFile != null ? Visibility.Visible : Visibility.Collapsed;
+        if (!r.Success || _lastFile == null) return;
+        var cfg = ReadSettings();
+        if (string.IsNullOrWhiteSpace(cfg.DriveFolderUrl) || string.IsNullOrWhiteSpace(cfg.GoogleOAuthClientId) || string.IsNullOrWhiteSpace(cfg.GoogleOAuthClientSecret)) return;
+        if (MessageBox.Show(this, "Deseja enviar este vídeo MP4 para a pasta configurada no Google Drive?",
+                "Enviar para o Google Drive", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        var transfer = new DriveTransferWindow { Owner = this };
+        transfer.Show();
+        try
+        {
+            var progress = new Progress<(long Sent, long Total)>(p => transfer.Report(p.Sent, p.Total));
+            var uploaded = await new GoogleDriveUploader().UploadAsync(cfg.GoogleOAuthClientId, cfg.GoogleOAuthClientSecret, cfg.DriveFolderUrl, _lastFile, progress);
+            _cfg.GoogleAccountEmail = uploaded.AccountEmail;
+            DriveAccountText.Text = "Conectado: " + uploaded.AccountEmail;
+            _cfg.Save(_settingsPath);
+            transfer.Complete(uploaded.Url);
+        }
+        catch (Exception ex) { transfer.Fail(ex.Message); }
+    }
+
+    private async void DriveConnectButton_Click(object sender, RoutedEventArgs e)
+    {
+        var cfg = ReadSettings();
+        if (string.IsNullOrWhiteSpace(cfg.DriveFolderUrl) || string.IsNullOrWhiteSpace(cfg.GoogleOAuthClientId) || string.IsNullOrWhiteSpace(cfg.GoogleOAuthClientSecret))
+        {
+            ShowError("Informe o link da pasta, Client ID e Client secret OAuth antes de conectar."); return;
+        }
+        DriveConnectButton.IsEnabled = false;
+        ShowInfo("Abrindo a autorização do Google e verificando acesso à pasta…");
+        try
+        {
+            var uploader = new GoogleDriveUploader();
+            var account = await uploader.ValidateFolderAsync(cfg.GoogleOAuthClientId, cfg.GoogleOAuthClientSecret, cfg.DriveFolderUrl);
+            _cfg.GoogleAccountEmail = account;
+            DriveAccountText.Text = "Conectado: " + account;
+            _cfg.Save(_settingsPath);
+            ShowInfo("Conta autorizada e pasta acessível. Os vídeos enviados herdarão o compartilhamento configurado nessa pasta.");
+        }
+        catch (Exception ex) { ShowError("Não foi possível conectar ao Google Drive: " + ex.Message); }
+        finally { DriveConnectButton.IsEnabled = true; }
+    }
+
+    private void DriveSwitchAccountButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(DriveFolderBox.Text) || string.IsNullOrWhiteSpace(GoogleClientIdBox.Text) || string.IsNullOrWhiteSpace(GoogleClientSecretBox.Text))
+        {
+            ShowError("Informe o link da pasta, Client ID e Client secret antes de trocar a conta."); return;
+        }
+        try
+        {
+            GoogleDriveUploader.ClearSavedAuthorization();
+            _cfg.GoogleAccountEmail = "";
+            DriveAccountText.Text = "Escolha a conta no navegador";
+            DriveConnectButton_Click(sender, e);
+        }
+        catch (Exception ex) { ShowError("Não foi possível remover a autorização salva: " + ex.Message); }
     }
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
@@ -683,7 +747,8 @@ public partial class MainWindow : Window
             if (ans != MessageBoxResult.Yes) return;
 
             var r = await rec.FinishAsync();
-            if (!r.Success && !r.Ignored) MessageBox.Show(this, r.Message, "TelaRec", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (r.Success) await ShowResultAsync(r);
+            else if (!r.Ignored) MessageBox.Show(this, r.Message, "TelaRec", MessageBoxButton.OK, MessageBoxImage.Warning);
             _closing = true;
             Close();
             return;
