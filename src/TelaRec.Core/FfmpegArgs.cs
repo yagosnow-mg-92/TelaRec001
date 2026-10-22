@@ -32,7 +32,11 @@ public static class FfmpegArgs
     public static string BuildCapture(MonitorInfo m, CaptureMode mode, int fps, VideoQuality q, VideoEncoder e,
         string output, bool audio = false)
     {
-        string audioIn = audio ? "-thread_queue_size 512 -f s16le -ar 48000 -ac 2 -i pipe:0 " : "";
+        // -probesize/-analyzeduration mínimos: sem isso o FFmpeg espera ~1 s lendo o pipe de áudio antes de
+        // iniciar o vídeo, e o som sai atrasado. O showinfo avisa (no stderr) quando o 1º quadro de vídeo existe.
+        string audioIn = audio ? "-probesize 32 -analyzeduration 1 -thread_queue_size 512 -f s16le -ar 48000 -ac 2 -i pipe:0 " : "";
+        string tail = audio ? Tail + ",showinfo" : Tail;
+        string level = audio ? "info -nostats" : "error";
         string audioOut = audio ? "-c:a aac -b:a 160k -ar 48000 -ac 2 -shortest " : "";
         string common = $"{EncoderArgs(e, q)} -g {fps * 2} {ColorTags} -fps_mode cfr -r {fps} {audioOut}{FragFlags} -f mp4 {Quote(output)}";
 
@@ -42,13 +46,13 @@ public static class FfmpegArgs
                 throw new InvalidOperationException("Monitor sem mapeamento DXGI.");
             string label = audio ? "[v]" : "";
             string maps = audio ? "-map \"[v]\" -map 0:a " : "";
-            return $"-hide_banner -loglevel error -y {audioIn}-init_hw_device d3d11va=hw:{m.AdapterIndex} -filter_hw_device hw " +
-                   $"-filter_complex \"ddagrab=output_idx={m.OutputIndex}:framerate={fps}:draw_mouse=1,hwdownload,format=bgra,{Tail}{label}\" {maps}{common}";
+            return $"-hide_banner -loglevel {level} -y {audioIn}-init_hw_device d3d11va=hw:{m.AdapterIndex} -filter_hw_device hw " +
+                   $"-filter_complex \"ddagrab=output_idx={m.OutputIndex}:framerate={fps}:draw_mouse=1,hwdownload,format=bgra,{tail}{label}\" {maps}{common}";
         }
 
         string gmaps = audio ? "-map 0:v -map 1:a " : "";
-        return $"-hide_banner -loglevel error -y -f gdigrab -framerate {fps} -offset_x {m.X} -offset_y {m.Y} " +
-               $"-video_size {m.Width}x{m.Height} -draw_mouse 1 -i desktop {audioIn}-vf \"{Tail}\" {gmaps}{common}";
+        return $"-hide_banner -loglevel {level} -y -f gdigrab -framerate {fps} -offset_x {m.X} -offset_y {m.Y} " +
+               $"-video_size {m.Width}x{m.Height} -draw_mouse 1 -i desktop {audioIn}-vf \"{tail}\" {gmaps}{common}";
     }
 
     public static string BuildRemux(string input, string output) =>

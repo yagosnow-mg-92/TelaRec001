@@ -136,6 +136,7 @@ public class AudioTests
         var a = FfmpegArgs.BuildCapture(Mon(), CaptureMode.Dxgi, 30, VideoQuality.Balanced, VideoEncoder.Cpu, "a.mp4");
         Assert.DoesNotContain("pipe:0", a);
         Assert.DoesNotContain("aac", a);
+        Assert.DoesNotContain("showinfo", a);
     }
 
     [Theory]
@@ -149,6 +150,8 @@ public class AudioTests
         Assert.Contains("-c:a aac", a);
         Assert.Contains("-shortest", a);
         Assert.Contains("-map", a);
+        Assert.Contains("-probesize 32", a);   // evita ~1 s de atraso do áudio
+        Assert.Contains("showinfo", a);        // sinaliza o 1º quadro de vídeo
     }
 
     [Fact]
@@ -218,11 +221,11 @@ public class AudioTests
         var path = Path.Combine(Path.GetTempPath(), "telarec-audio-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {
-            new AppSettings { RecordSystemAudio = true, RecordMic = true, MicDeviceId = "id1", MicGainPct = 150, Denoise = true, DenoiseLevel = 2, AudioSyncDelayMs = 600 }.Save(path);
+            new AppSettings { RecordSystemAudio = true, RecordMic = true, MicDeviceId = "id1", MicGainPct = 150, Denoise = true, DenoiseLevel = 2, AudioSyncAdjustMs = -150 }.Save(path);
             var s = AppSettings.Load(path);
             Assert.True(s.RecordSystemAudio); Assert.True(s.RecordMic);
             Assert.Equal("id1", s.MicDeviceId); Assert.Equal(150, s.MicGainPct);
-            Assert.True(s.Denoise); Assert.Equal(2, s.DenoiseLevel); Assert.Equal(600, s.AudioSyncDelayMs);
+            Assert.True(s.Denoise); Assert.Equal(2, s.DenoiseLevel); Assert.Equal(-150, s.AudioSyncAdjustMs);
         }
         finally { try { File.Delete(path); } catch { } }
     }

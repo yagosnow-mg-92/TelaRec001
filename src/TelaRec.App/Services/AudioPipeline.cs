@@ -196,9 +196,12 @@ internal sealed class AudioPipeline : IDisposable
         }
     }
 
-    public void Start(Stream output)
+    private ManualResetEventSlim _videoStarted = new(true);
+
+    public void Start(Stream output, ManualResetEventSlim videoStarted)
     {
         _out = output;
+        _videoStarted = videoStarted;
         try { _sys?.Start(); }
         catch (Exception ex) { Warnings.Add("Aviso: falha ao iniciar a captura do som do computador (" + ex.Message + ")."); _sys?.Dispose(); _sys = null; }
         try { _mic?.Start(); }
@@ -219,10 +222,21 @@ internal sealed class AudioPipeline : IDisposable
         var mix = new float[Samples];
         var pcm = new byte[Samples * 2];
 
-        // Espera de sincronia: o FFmpeg demora um pouco para começar a capturar o vídeo.
+        // 1) "Escorva": um bloco de silêncio logo de início libera a leitura do FFmpeg
+        //    (ele só começa o vídeo depois de abrir a entrada de áudio).
+        if (!WriteSilence(pcm, 1)) return;
+
+        // 2) Espera o 1º quadro de vídeo existir. O áudio é PCM puro (sem relógio próprio), então o que
+        //    escrevermos a partir de agora cai exatamente no início da linha do tempo do vídeo.
         var wait = Stopwatch.StartNew();
-        while (!_stop && wait.ElapsedMilliseconds < _o.SyncDelayMs) Thread.Sleep(5);
+        while (!_stop && !_videoStarted.Wait(10) && wait.ElapsedMilliseconds < 6000) { }
+        if (_stop) return;
         _sys?.Clear(); _mic?.Clear();
+
+        // 3) Ajuste fino do usuário: positivo = áudio mais tarde (silêncio extra); negativo = áudio mais cedo.
+        int adj = _o.SyncAdjustMs;
+        if (adj > 0 && !WriteSilence(pcm, adj / 20)) return;
+        long skip = adj < 0 ? (-adj) / 20 : 0;
 
         var clock = Stopwatch.StartNew();
         long blocks = 0;
@@ -248,11 +262,26 @@ internal sealed class AudioPipeline : IDisposable
                 _mic.Trim(0.25);
             }
 
-            AudioMath.ToPcm16(mix, Samples, pcm);
-            try { _out!.Write(pcm, 0, pcm.Length); _out.Flush(); }
-            catch { break; } // FFmpeg encerrou: o Recorder trata o restante
+            if (blocks >= skip)
+            {
+                AudioMath.ToPcm16(mix, Samples, pcm);
+                try { _out!.Write(pcm, 0, pcm.Length); _out.Flush(); }
+                catch { break; } // FFmpeg encerrou: o Recorder trata o restante
+            }
             blocks++;
         }
+    }
+
+    private bool WriteSilence(byte[] pcm, int blocks)
+    {
+        Array.Clear(pcm, 0, pcm.Length);
+        try
+        {
+            for (int i = 0; i < blocks && !_stop; i++) { _out!.Write(pcm, 0, pcm.Length); }
+            _out!.Flush();
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>Para o mixer e as capturas. O chamador fecha o stdin do FFmpeg em seguida.</summary>

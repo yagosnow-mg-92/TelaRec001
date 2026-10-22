@@ -33,7 +33,7 @@ As duas fontes são mixadas em uma só faixa AAC (160 kbps, 48 kHz estéreo). Co
 
 **Redução de ruído:** é um filtro de graves + *porta de ruído adaptativa* — mede o ruído de fundo e o atenua quando você não está falando. Não remove ruído *enquanto* você fala (isso exigiria um modelo de IA, fora do escopo da v1).
 
-**Sincronia:** o áudio é enviado ao FFmpeg em tempo real, com um atraso inicial configurável (padrão 450 ms) para casar com a imagem. Se o som sair adiantado ou atrasado na sua máquina, ajuste **Ajuste de sincronia do áudio (ms)** na seção Áudio. Esse valor ainda precisa ser calibrado em hardware real.
+**Sincronia:** o áudio chega ao FFmpeg por um pipe, que não carrega relógio próprio. Por isso o programa (1) reduz a análise inicial da entrada de áudio (sem isso o FFmpeg demorava ~1 s para iniciar o vídeo e o som saía atrasado) e (2) só começa a enviar o áudio real quando o **primeiro quadro de vídeo** aparece (detectado pelo filtro `showinfo`). Assim o som já nasce alinhado com a imagem, sem depender de uma estimativa. Há ainda um **Ajuste fino da sincronia (ms)** (padrão 0; positivo atrasa o som, negativo adianta) para eventuais diferenças do seu equipamento. A sincronia em hardware real ainda precisa ser confirmada.
 
 **Permissão do microfone:** se a barra de teste não mexer, confira *Configurações do Windows → Privacidade e segurança → Microfone* e permita que **aplicativos de desktop** usem o microfone.
 

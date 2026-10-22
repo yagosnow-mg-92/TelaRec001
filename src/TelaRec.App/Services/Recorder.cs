@@ -120,15 +120,16 @@ public sealed class Recorder : IDisposable
         var seg = Path.Combine(_tempDir, $"seg{_segments.Count + 1:000}.mp4");
         var log = new StringBuilder();
         _log = log;
+        var firstFrame = new ManualResetEventSlim(false);
         Process p;
-        try { p = Launch(FfmpegArgs.BuildCapture(_monitor!, mode, _fps, _quality, enc, seg, _audioOpt.Any), log); }
+        try { p = Launch(FfmpegArgs.BuildCapture(_monitor!, mode, _fps, _quality, enc, seg, _audioOpt.Any), log, firstFrame); }
         catch (Exception ex) { return "não foi possível iniciar o motor de vídeo (" + ex.Message + ")"; }
 
         _startingUp = true; _proc = p; _sw.Restart();
         if (_audioOpt.Any)
         {
             _audio = new AudioPipeline(_audioOpt);
-            _audio.Start(p.StandardInput.BaseStream);
+            _audio.Start(p.StandardInput.BaseStream, firstFrame);
             foreach (var w in _audio.Warnings) Warning?.Invoke(w);
         }
         await Task.Delay(1500);
@@ -148,7 +149,7 @@ public sealed class Recorder : IDisposable
         return null;
     }
 
-    private Process Launch(string args, StringBuilder log)
+    private Process Launch(string args, StringBuilder log, ManualResetEventSlim? firstFrame = null)
     {
         var psi = new ProcessStartInfo(_ffmpeg, args)
         {
@@ -160,6 +161,12 @@ public sealed class Recorder : IDisposable
         p.ErrorDataReceived += (_, e) =>
         {
             if (e.Data == null) return;
+            // O filtro showinfo escreve uma linha por quadro: o 1º marca o início real do vídeo (sincronia do áudio).
+            if (firstFrame != null && e.Data.Contains("Parsed_showinfo"))
+            {
+                if (!firstFrame.IsSet) firstFrame.Set();
+                return;
+            }
             lock (log) { if (log.Length < 20000) log.AppendLine(e.Data); }
         };
         p.Exited += (_, _) => OnExited(p);
@@ -172,7 +179,9 @@ public sealed class Recorder : IDisposable
     {
         string text; lock (log) text = log.ToString();
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var s = string.Join(" | ", lines.TakeLast(3));
+        string[] keys = { "error", "fail", "invalid", "cannot", "could not", "unable", "no such", "denied" };
+        var errs = lines.Where(l => keys.Any(k => l.Contains(k, StringComparison.OrdinalIgnoreCase))).ToList();
+        var s = string.Join(" | ", (errs.Count > 0 ? errs : lines.ToList()).TakeLast(3));
         return s.Length > 300 ? s[..300] : s;
     }
 

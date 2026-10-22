@@ -43,7 +43,7 @@ Marque conforme for validando. Para cada item anote Windows, GPU e resultado.
 | 33 | Teste do microfone: barra reage à voz; captação 0–300% muda o nível; aviso aparece se sem sinal | ☐ |
 | 34 | Gravar som do PC + microfone juntos: as duas vozes aparecem no mesmo vídeo, sem eco/duplicação | ☐ |
 | 35 | Redução de ruído (Leve/Média/Forte): chiado cai nas pausas e a voz não é cortada | ☐ |
-| 36 | Sincronia áudio/imagem (bater palma/clicar com som): diferença < ~100 ms; se não, calibrar "Ajuste de sincronia" | ☐ |
+| 36 | Sincronia áudio/imagem (clicar num vídeo/YouTube e ver quando o som começa; ou bater palma): diferença < ~100 ms com o ajuste em 0; se não, usar "Ajuste fino da sincronia" | ☐ |
 | 37 | Pausar/retomar com áudio: sem áudio durante a pausa, sincronia mantida após retomar | ☐ |
 | 38 | Microfone bloqueado nas permissões do Windows: aviso claro e gravação segue sem o microfone | ☐ |
 | 39 | Trocar dispositivo de saída/fones durante a gravação (comportamento documentado) | ☐ |

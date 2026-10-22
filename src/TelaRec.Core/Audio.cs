@@ -9,7 +9,7 @@ public sealed record AudioOptions(
     float MicGain,
     bool Denoise,
     int DenoiseLevel,
-    int SyncDelayMs)
+    int SyncAdjustMs)
 {
     public static AudioOptions None { get; } = new(false, false, null, 1f, 1f, false, 1, 0);
     public bool Any => RecordSystem || RecordMic;

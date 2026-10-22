@@ -69,7 +69,8 @@ public sealed class AppSettings
     public int MicGainPct { get; set; } = 100;
     public bool Denoise { get; set; } = false;
     public int DenoiseLevel { get; set; } = 1;
-    public int AudioSyncDelayMs { get; set; } = 450;
+    /// <summary>Ajuste fino da sincronia (ms). Positivo = áudio mais tarde; negativo = áudio mais cedo.</summary>
+    public int AudioSyncAdjustMs { get; set; } = 0;
 
     public static AppSettings Load(string path)
     {

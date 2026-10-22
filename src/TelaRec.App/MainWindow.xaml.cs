@@ -71,7 +71,7 @@ public partial class MainWindow : Window
         MicGainSlider.Value = Math.Clamp(_cfg.MicGainPct, 0, 300);
         SysGainText.Text = (int)SysGainSlider.Value + "%";
         MicGainText.Text = (int)MicGainSlider.Value + "%";
-        SyncBox.Text = Math.Clamp(_cfg.AudioSyncDelayMs, 0, 3000).ToString();
+        SyncBox.Text = Math.Clamp(_cfg.AudioSyncAdjustMs, -2000, 2000).ToString();
         switch (_cfg.DenoiseLevel) { case 0: DnLow.IsChecked = true; break; case 2: DnHigh.IsChecked = true; break; default: DnMed.IsChecked = true; break; }
         // Eventos dos sliders são ligados aqui (e não no XAML) para não dispararem durante a construção da janela.
         SysGainSlider.ValueChanged += (_, _) => SysGainText.Text = (int)SysGainSlider.Value + "%";
@@ -275,7 +275,7 @@ public partial class MainWindow : Window
         _cfg.MicGainPct = (int)MicGainSlider.Value;
         _cfg.DenoiseLevel = DenoiseLevelIndex();
         if (SelectedMic != null) _cfg.MicDeviceId = SelectedMic.Id;
-        _cfg.AudioSyncDelayMs = int.TryParse(SyncBox.Text.Trim(), out var sd) ? Math.Clamp(sd, 0, 3000) : 450;
+        _cfg.AudioSyncAdjustMs = int.TryParse(SyncBox.Text.Trim(), out var sd) ? Math.Clamp(sd, -2000, 2000) : 0;
         return _cfg;
     }
 
@@ -311,7 +311,7 @@ public partial class MainWindow : Window
             StopMicTest();
             var audio = (cfg.RecordSystemAudio || cfg.RecordMic)
                 ? new AudioOptions(cfg.RecordSystemAudio, cfg.RecordMic, mic?.Id, cfg.SystemGainPct / 100f,
-                    cfg.MicGainPct / 100f, cfg.Denoise, cfg.DenoiseLevel, cfg.AudioSyncDelayMs)
+                    cfg.MicGainPct / 100f, cfg.Denoise, cfg.DenoiseLevel, cfg.AudioSyncAdjustMs)
                 : AudioOptions.None;
 
             long? free = DiskSpace.FreeBytes(cfg.OutputFolder);
