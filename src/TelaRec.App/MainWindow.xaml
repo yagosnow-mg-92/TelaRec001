@@ -117,7 +117,7 @@
                                                 </TextBlock>
                                             </StackPanel>
                                             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12"
-                                                       Text="• Só aparece no monitor que está sendo gravado.&#10;• O som do clique só entra no vídeo se "Gravar o som do computador" estiver ligado.&#10;• Cliques feitos durante a pausa não aparecem."/>
+                                                       Text="• Só aparece no monitor que está sendo gravado.&#10;• O som do clique só entra no vídeo se &quot;Gravar o som do computador&quot; estiver ligado.&#10;• Cliques feitos durante a pausa não aparecem."/>
                                         </StackPanel>
                                     </Border>
                                 </Popup>
