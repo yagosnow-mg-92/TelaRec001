@@ -230,3 +230,56 @@ public class AudioTests
         finally { try { File.Delete(path); } catch { } }
     }
 }
+
+public class DriveTests
+{
+    [Theory]
+    [InlineData("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp?usp=sharing", "1AbCdEfGhIjKlMnOp")]
+    [InlineData("https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjKlMnOp", "1AbCdEfGhIjKlMnOp")]
+    [InlineData("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp?resourcekey=0-xyz", "1AbCdEfGhIjKlMnOp")]
+    [InlineData("https://drive.google.com/open?id=1AbCdEfGhIjKlMnOp", "1AbCdEfGhIjKlMnOp")]
+    [InlineData("  1AbCdEfGhIjKlMnOp  ", "1AbCdEfGhIjKlMnOp")]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    [InlineData("https://example.com/qualquer", null)]
+    [InlineData("curto", null)]
+    public void ParseFolderId_Works(string? input, string? expected) =>
+        Assert.Equal(expected, DriveLink.ParseFolderId(input));
+
+    [Theory]
+    [InlineData("https://script.google.com/macros/s/AKfycbx123/exec", true)]
+    [InlineData("https://script.google.com/a/macros/empresa.com/s/AKfycbx123/exec", true)]
+    [InlineData("https://script.google.com/macros/s/AKfycbx123/dev", false)]
+    [InlineData("https://evil.example.com/macros/s/x/exec", false)]
+    [InlineData("", false)]
+    public void IsScriptUrl_Works(string url, bool expected) =>
+        Assert.Equal(expected, DriveLink.IsScriptUrl(url));
+
+    [Fact]
+    public void BridgeScript_HasRequiredPieces()
+    {
+        var c = DriveBridgeScript.Code;
+        Assert.Contains("function doPost", c);
+        Assert.Contains("uploadType=resumable", c);
+        Assert.Contains("supportsAllDrives=true", c);
+        Assert.Contains("X-Upload-Content-Length", c);
+        Assert.Contains("TROQUE-POR-UMA-CHAVE-LONGA", c);   // o usuário precisa trocar a chave
+        Assert.Contains("req.key !== CHAVE", c);             // validação da chave
+        Assert.Contains("function doGet", c);                // teste pelo navegador
+        Assert.Contains("function autorizar", c);            // concede as permissões
+    }
+
+    [Fact]
+    public void Settings_DriveRoundTrip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "telarec-drive-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            new AppSettings { DriveEnabled = true, DriveAuto = true, DriveFolderLink = "f", DriveScriptUrl = "u", DriveKeyEnc = "k" }.Save(path);
+            var s = AppSettings.Load(path);
+            Assert.True(s.DriveEnabled); Assert.True(s.DriveAuto);
+            Assert.Equal("f", s.DriveFolderLink); Assert.Equal("u", s.DriveScriptUrl); Assert.Equal("k", s.DriveKeyEnc);
+        }
+        finally { try { File.Delete(path); } catch { } }
+    }
+}

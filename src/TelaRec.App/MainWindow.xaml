@@ -54,7 +54,7 @@
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Text="Pasta de destino" VerticalAlignment="Center" Margin="0,0,0,12"/>
@@ -124,29 +124,6 @@
                             </StackPanel>
                             <CheckBox x:Name="ClickSoundCheck" Content="Tocar som ao clicar" Foreground="{StaticResource Text}" Margin="24,0,0,6"/>
                             <TextBlock x:Name="EncoderInfo" Foreground="{StaticResource Muted}" FontSize="12" Text=""/>
-                        </StackPanel>
-
-                        <TextBlock Grid.Row="5" Text="Google Drive" VerticalAlignment="Top" Margin="0,14,0,0"/>
-                        <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,14,0,0">
-                            <TextBox x:Name="DriveFolderBox" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
-                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
-                                     ToolTip="Cole o link da pasta do Google Drive onde os vídeos serão enviados"/>
-                            <TextBox x:Name="GoogleClientIdBox" Margin="0,7,0,0" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
-                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
-                                     ToolTip="ID do cliente OAuth do tipo Aplicativo para computador, criado no Google Cloud Console"/>
-                            <TextBox x:Name="GoogleClientSecretBox" Margin="0,7,0,0" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
-                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"
-                                     ToolTip="Client secret do cliente OAuth para computador; o Google não o considera um segredo confidencial para apps instalados"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <Button x:Name="DriveConnectButton" Content="Conectar e testar pasta" Style="{StaticResource GhostBtn}"
-                                        Height="34" MinWidth="190" FontSize="13" Margin="0,0,10,0" Click="DriveConnectButton_Click"/>
-                                <Button x:Name="DriveSwitchAccountButton" Content="Trocar conta" Style="{StaticResource GhostBtn}"
-                                        Height="34" MinWidth="110" FontSize="13" Margin="0,0,10,0" Click="DriveSwitchAccountButton_Click"/>
-                                <TextBlock x:Name="DriveAccountText" Foreground="{StaticResource Muted}" VerticalAlignment="Center"
-                                           Text="Drive não conectado" TextWrapping="Wrap"/>
-                            </StackPanel>
-                            <TextBlock Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="Informe o link da pasta, Client ID e Client secret de um cliente OAuth do tipo Aplicativo para computador. O TelaRec pedirá autorização pelo navegador e manterá a sessão protegida nesta conta do Windows. Após cada gravação, você poderá escolher se envia o MP4."/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -221,6 +198,58 @@
                     </StackPanel>
                 </Border>
 
+                <TextBlock Text="GOOGLE DRIVE" Foreground="{StaticResource Muted}" FontSize="12" FontWeight="SemiBold" Margin="2,20,0,8"/>
+                <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                        CornerRadius="14" Padding="16">
+                    <StackPanel x:Name="DrivePanel">
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="DriveCheck" Click="DriveOption_Click" VerticalAlignment="Center"
+                                      Foreground="{StaticResource Text}" Content="Enviar as gravações para o Google Drive da empresa"/>
+                            <Button x:Name="DriveHelpButton" Content="?" Style="{StaticResource HelpBtn}" Margin="10,0,0,0"
+                                    ToolTip="Como configurar o envio" Click="DriveHelpButton_Click"/>
+                            <Popup x:Name="DriveHelpPopup" PlacementTarget="{Binding ElementName=DriveHelpButton}"
+                                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                                <Border Background="{StaticResource Surface2}" BorderBrush="{StaticResource Accent}"
+                                        BorderThickness="1" CornerRadius="12" Padding="16" Width="470" Margin="0,6,14,14"
+                                        TextElement.Foreground="{StaticResource Text}">
+                                    <StackPanel>
+                                        <TextBlock Text="Configurar o envio (uma vez só)" FontWeight="SemiBold" FontSize="15"/>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{StaticResource Muted}"
+                                                   Text="Use a conta Google da empresa que já tem acesso à pasta."/>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Text="1) Clique em &quot;Copiar código do script&quot;.&#10;2) Abra script.new, selecione tudo (Ctrl+A), apague e cole (Ctrl+V).&#10;3) Na linha const CHAVE troque o texto entre aspas por uma chave sua (não use o ID do URL) e salve (Ctrl+S).&#10;4) No menu do topo escolha a função &quot;autorizar&quot;, clique em Executar e aceite as permissões.&#10;5) Implantar &gt; Nova implantação &gt; App da Web.&#10;    Executar como: Eu  |  Quem pode acessar: Qualquer pessoa.&#10;6) Teste: abra o URL do App da Web numa janela anônima; deve aparecer ok:true.&#10;7) Cole aqui o URL, a chave e o link da pasta e clique em &quot;Testar conexão&quot;.&#10;&#10;Sempre que mudar o código: Implantar &gt; Gerenciar implantações &gt; lápis &gt; Versão: Nova versão &gt; Implantar."/>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{StaticResource Muted}" FontSize="12"
+                                                   Text="Não use &quot;Qualquer pessoa em [empresa]&quot;: o programa não consegue entrar com a conta Google e o envio falharia. Quem souber o URL e a chave só consegue enviar arquivos para a pasta (não lê nem apaga)."/>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                        </StackPanel>
+
+                        <StackPanel x:Name="DriveOptions" Margin="24,10,0,0" Visibility="Collapsed">
+                            <TextBlock Text="Link da pasta do Google Drive"/>
+                            <TextBox x:Name="DriveFolderBox" Margin="0,4,0,10" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"/>
+                            <TextBlock Text="URL do App da Web (script)"/>
+                            <TextBox x:Name="DriveUrlBox" Margin="0,4,0,10" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                     BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"/>
+                            <TextBlock Text="Chave secreta"/>
+                            <PasswordBox x:Name="DriveKeyBox" Margin="0,4,0,12" Background="{StaticResource Surface2}" Foreground="{StaticResource Text}"
+                                         BorderBrush="{StaticResource Border}" CaretBrush="White" Padding="8,7"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="DriveCopyScriptButton" Content="Copiar código do script" Style="{StaticResource GhostBtn}"
+                                        Height="34" MinWidth="170" FontSize="13" Margin="0,0,10,0" Click="DriveCopyScriptButton_Click"/>
+                                <Button x:Name="DriveTestButton" Content="Testar conexão" Style="{StaticResource GhostBtn}"
+                                        Height="34" MinWidth="140" FontSize="13" Margin="0" Click="DriveTestButton_Click"/>
+                            </StackPanel>
+                            <TextBlock x:Name="DriveStatus" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="12" Foreground="{StaticResource Muted}"/>
+                            <CheckBox x:Name="DriveAutoCheck" Margin="0,12,0,0" Foreground="{StaticResource Text}"
+                                      Content="Enviar automaticamente ao finalizar (sem perguntar)"/>
+                            <TextBlock Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="Desmarcado, o programa pergunta a cada gravação se você quer enviar. O MP4 é enviado como está, sem compactar."/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <Border x:Name="MessageBorder" Visibility="Collapsed" Margin="0,18,0,0" CornerRadius="12" Padding="14"
                         Background="{StaticResource Surface2}" BorderBrush="{StaticResource Border}" BorderThickness="1">
                     <StackPanel>
@@ -228,6 +257,8 @@
                         <StackPanel x:Name="ActionsPanel" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
                             <Button x:Name="OpenFolderButton" Content="Abrir pasta" Style="{StaticResource GhostBtn}"
                                     Height="34" MinWidth="110" FontSize="13" Margin="0,0,8,0" Click="OpenFolderButton_Click"/>
+                            <Button x:Name="DriveButton" Content="Enviar ao Drive" Style="{StaticResource GhostBtn}"
+                                    Height="34" MinWidth="130" FontSize="13" Margin="0,0,8,0" Visibility="Collapsed" Click="DriveButton_Click"/>
                             <Button x:Name="PlayButton" Content="Reproduzir" Style="{StaticResource GhostBtn}"
                                     Height="34" MinWidth="110" FontSize="13" Margin="0" Click="PlayButton_Click"/>
                         </StackPanel>

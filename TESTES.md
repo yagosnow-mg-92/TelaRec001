@@ -48,3 +48,13 @@ Marque conforme for validando. Para cada item anote Windows, GPU e resultado.
 | 38 | Microfone bloqueado nas permissões do Windows: aviso claro e gravação segue sem o microfone | ☐ |
 | 39 | Trocar dispositivo de saída/fones durante a gravação (comportamento documentado) | ☐ |
 | 40 | Finalizar com áudio: MP4 fecha corretamente (exit 0), abre em VLC, Windows Media Player e navegador | ☐ |
+| 41 | Google Drive: criar o script, implantar como "Qualquer pessoa" e clicar em "Testar conexão": mostra o nome da pasta e a conta | ☐ |
+| 42 | Testar com a chave errada e com URL de implantação restrita à empresa: mensagens claras | ☐ |
+| 43 | Finalizar gravação: aparece a pergunta "Enviar para o Drive?"; "Não" mantém o vídeo local; botão "Enviar ao Drive" permite enviar depois | ☐ |
+| 44 | Envio de vídeo pequeno (10 MB) e grande (>1 GB): barra de progresso, velocidade e tempo restante; arquivo no Drive abre e tem o mesmo tamanho | ☐ |
+| 45 | Janela final: link correto, "Copiar link" funciona (colar no DevOps), "Abrir no navegador" abre o vídeo | ☐ |
+| 46 | Outra pessoa do grupo da empresa consegue abrir o link; pessoa fora do grupo não | ☐ |
+| 47 | Derrubar a internet no meio do envio: retoma sozinho (ou oferece "tentar novamente") sem recomeçar do zero | ☐ |
+| 48 | Cancelar o envio: nenhum arquivo parcial fica no Drive | ☐ |
+| 49 | Pasta em Drive compartilhado (Shared Drive) e em "Meu Drive" | ☐ |
+| 50 | "Enviar automaticamente" ligado: envia sem perguntar; chave não aparece em texto puro no settings.json | ☐ |

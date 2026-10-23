@@ -22,14 +22,6 @@ O executável tem ~60–80 MB porque embute o .NET e o FFmpeg. Na primeira execu
 3. Escolha pasta, nome (opcional), FPS e qualidade.
 4. **Iniciar gravação** → **Pausar/Retomar** → **Finalizar**. O tempo em pausa não entra no vídeo.
 
-### Enviar gravações ao Google Drive
-
-Na seção **Google Drive**, informe o link da pasta de destino, o Client ID e o Client secret de uma credencial OAuth do tipo **Aplicativo para computador**. Clique em **Conectar e testar pasta**; o navegador permite escolher a conta Google e o TelaRec confirma se ela pode adicionar arquivos à pasta. Use **Trocar conta** para remover a autorização local e selecionar outra conta. Após uma gravação concluída, o app pergunta se deseja enviar o MP4 original; o progresso e o link para copiar aparecem numa janela própria.
-
-O app usa a Drive API com upload retomável para enviar o MP4 sem recomprimir. O link do arquivo respeita as permissões herdadas da pasta: integrantes do grupo só conseguem abrir se o Google Drive já lhes conceder acesso. O TelaRec não altera as permissões da pasta ou do vídeo. Tokens OAuth são protegidos pelo DPAPI do Windows e vinculados ao usuário Windows atual.
-
-**Configuração única do Google Cloud:** crie um projeto, habilite a Google Drive API, configure a tela de consentimento OAuth como interna quando o uso for restrito à organização (conforme a política do Workspace), crie um OAuth Client ID de aplicativo para computador e use os dados mostrados no formulário do TelaRec. O aplicativo solicita o escopo completo do Drive para validar uma pasta existente colada por link e gravar nela; políticas do Workspace ou do Google podem exigir aprovação administrativa ou verificação OAuth antes do primeiro uso.
-
 ## Áudio (opcional)
 
 Em **Áudio**, duas opções independentes (ambas vêm desligadas):
@@ -44,6 +36,23 @@ As duas fontes são mixadas em uma só faixa AAC (160 kbps, 48 kHz estéreo). Co
 **Sincronia:** o áudio chega ao FFmpeg por um pipe, que não carrega relógio próprio. Por isso o programa (1) reduz a análise inicial da entrada de áudio (sem isso o FFmpeg demorava ~1 s para iniciar o vídeo e o som saía atrasado) e (2) só começa a enviar o áudio real quando o **primeiro quadro de vídeo** aparece (detectado pelo filtro `showinfo`). Assim o som já nasce alinhado com a imagem, sem depender de uma estimativa. Há ainda um **Ajuste fino da sincronia (ms)** (padrão 0; positivo atrasa o som, negativo adianta) para eventuais diferenças do seu equipamento. A sincronia em hardware real ainda precisa ser confirmada.
 
 **Permissão do microfone:** se a barra de teste não mexer, confira *Configurações do Windows → Privacidade e segurança → Microfone* e permita que **aplicativos de desktop** usem o microfone.
+
+## Envio ao Google Drive (opcional)
+
+Ao finalizar uma gravação, o programa pode **enviar o MP4 (sem compactar) para uma pasta do Google Drive da empresa** e mostrar uma janela com o **link do vídeo** e o botão **Copiar link**.
+
+**Como funciona (sem Google Cloud):** você cria uma vez um pequeno *Google Apps Script* na conta da empresa que tem acesso à pasta. Esse script roda com a permissão do dono e apenas **abre uma sessão de envio retomável** no Drive; o arquivo vai direto do computador para o Google, em partes de 8 MB, com janela de progresso, retomada automática se a internet cair e conferência do tamanho no final. O vídeo herda as permissões da pasta (quem está no grupo da empresa consegue abrir o link).
+
+**Configuração (uma vez):** veja o guia ilustrado por etapas com testes em [`drive-bridge/PASSO-A-PASSO.md`](drive-bridge/PASSO-A-PASSO.md). Resumo: seção **Google Drive** do programa → botão **?** mostra o passo a passo; o botão **Copiar código do script** copia o código (também disponível em `drive-bridge/Code.gs`). Resumo:
+1. Abra https://script.new com a conta da empresa e cole o código; troque `TROQUE-POR-UMA-CHAVE-LONGA` por uma chave sua.
+2. *Implantar → Nova implantação → App da Web* — **Executar como: Eu**; **Quem pode acessar: Qualquer pessoa**. Implante e autorize.
+3. No TelaRec, cole o **link da pasta**, o **URL do App da Web** e a **chave**; clique em **Testar conexão**.
+
+**Importante:** não use "Qualquer pessoa em [empresa]". Essa opção exige login Google na chamada, e o programa não consegue fazê-lo sem um projeto no Google Cloud (nesse caso o programa mostra um aviso explicando).
+
+**Segurança:** quem souber o URL **e** a chave consegue apenas *enviar* arquivos para a pasta (não lê nem apaga nada). A chave fica protegida no computador pelo Windows (DPAPI) e não vai para o repositório. Para trocar a chave: altere-a no script, crie uma *nova versão* da implantação e atualize o programa. O script aceita uma lista opcional de pastas permitidas (`PASTAS_PERMITIDAS`). Os vídeos ficam em nome da conta dona do script e usam a cota de armazenamento dela/da pasta. O administrador do Google Workspace pode bloquear Apps Script ou apps sem login; nesse caso este caminho não funciona (alternativa oficial: criar um ID de cliente OAuth no Google Cloud).
+
+**Limitação:** esta é uma técnica conhecida da comunidade, não o método oficial do Google; ainda precisa ser validada na sua conta.
 
 ## Efeito de clique (opcional)
 
@@ -66,6 +75,7 @@ Funciona só no monitor gravado e não aparece durante a pausa. O círculo é de
 | Plano B | `gdigrab` (GDI) por coordenadas | Usado só se o DXGI falhar **e** todos os monitores estiverem em escala 100% (senão o recorte poderia errar). |
 | Codificação | H.264: NVENC / Quick Sync / AMF (testados na inicialização) com fallback x264 | Compatibilidade máxima; hardware quando confiável. |
 | Áudio | NAudio (WASAPI) → mixer próprio → PCM no stdin do FFmpeg → AAC | Loopback + microfone em tempo real, com silêncio injetado quando nada toca (o loopback não envia dados em silêncio). |
+| Envio ao Drive | Apps Script (sessão retomável) + HttpClient em partes de 8 MB | Funciona sem projeto no Google Cloud; arquivo vai direto ao Google, com progresso e retomada. |
 | Container | MP4 fragmentado por trecho → união sem recodificar + `faststart` | Arquivo sobrevive a quedas; pausa = novo trecho; sem manter vídeo em RAM. |
 | Cor | BT.709, faixa limitada, sem escalonar | Cores corretas e texto nítido; só corta 1 px se a dimensão for ímpar (exigência do H.264). |
 | Distribuição | `dotnet publish` single-file + FFmpeg embutido (gzip) | Um único `.exe`. |
